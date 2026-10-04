@@ -104,7 +104,15 @@ jobs:
 
     - name: Download irrlicht
       run: |
-        git clone --depth=1 https://github.com/mercury233/irrlicht
+        # Use the version of this Irrlicht copy from when the game's source code
+        # was last updated (April 2025). Later versions changed parts of
+        # Irrlicht that the game's code relies on.
+        git clone https://github.com/mercury233/irrlicht
+        cd irrlicht
+        $commit = git rev-list -n 1 --before="2025-04-11" HEAD
+        git checkout $commit
+        git log -1 --format="%H  %ci  %s"
+        cd ..
 
     - name: Check DirectX SDK
       id: dxsdk
