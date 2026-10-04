@@ -27,18 +27,32 @@ bool DataManager::ReadDB(sqlite3* pDB) {
 			cd.code = sqlite3_column_int(pStmt, 0);
 			cd.ot = sqlite3_column_int(pStmt, 1);
 			cd.alias = sqlite3_column_int(pStmt, 2);
-			uint64_t setcode = static_cast<uint64_t>(sqlite3_column_int64(pStmt, 3));
-			if (setcode) {
-				auto it = extra_setcode.find(cd.code);
-				if (it != extra_setcode.end()) {
-					int len = it->second.size();
-					if (len > SIZE_SETCODE)
-						len = SIZE_SETCODE;
-					if (len)
-						std::memcpy(cd.setcode, it->second.data(), len * sizeof(uint16_t));
+			if (sqlite3_column_type(pStmt, 3) == SQLITE_BLOB) {
+				// TDOANE's cards.cdb stores archetype (series) codes as a list of
+				// 16-bit values rather than one packed integer.
+				auto blob = static_cast<const unsigned char*>(sqlite3_column_blob(pStmt, 3));
+				int bytes = sqlite3_column_bytes(pStmt, 3);
+				int count = 0;
+				for (int i = 0; blob && i + 1 < bytes && count < SIZE_SETCODE; i += 2) {
+					uint16_t code = static_cast<uint16_t>(blob[i] | (blob[i + 1] << 8));
+					if (code)
+						cd.setcode[count++] = code;
 				}
-				else
-					cd.set_setcode(setcode);
+			}
+			else {
+				uint64_t setcode = static_cast<uint64_t>(sqlite3_column_int64(pStmt, 3));
+				if (setcode) {
+					auto it = extra_setcode.find(cd.code);
+					if (it != extra_setcode.end()) {
+						int len = it->second.size();
+						if (len > SIZE_SETCODE)
+							len = SIZE_SETCODE;
+						if (len)
+							std::memcpy(cd.setcode, it->second.data(), len * sizeof(uint16_t));
+					}
+					else
+						cd.set_setcode(setcode);
+				}
 			}
 			cd.type = static_cast<decltype(cd.type)>(sqlite3_column_int64(pStmt, 4));
 			cd.attack = sqlite3_column_int(pStmt, 5);
