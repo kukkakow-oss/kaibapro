@@ -1,5 +1,6 @@
 # Builds YGOPro.exe for Windows on GitHub's computers.
 # Two copies are built, one with each rules engine, so they can be compared.
+# Built without sound for now (see the note further down).
 # Runs automatically after every change, or by hand from the Actions tab.
 name: Build Windows test copy
 
@@ -98,16 +99,8 @@ jobs:
         7z x ${{ steps.sqlite.outputs.filepath }}
         move sqlite-amalgamation-3490100 sqlite3
 
-    - name: Download irrKlang
-      id: irrKlang
-      uses: mercury233/action-cache-download-file@v1.0.0
-      with:
-        url: https://www.ambiera.at/downloads/irrKlang-32bit-1.6.0.zip
-
-    - name: Extract irrKlang
-      run: |
-        7z x ${{ steps.irrKlang.outputs.filepath }}
-        move irrKlang-1.6.0 irrKlang
+    # irrKlang (the sound library) is no longer publicly downloadable,
+    # so this copy is built without sound for now.
 
     - name: Download irrlicht
       run: |
@@ -144,7 +137,7 @@ jobs:
 
     - name: Use premake to generate Visual Studio solution (2022)
       run: |
-        .\premake5.exe vs2022
+        .\premake5.exe vs2022 --no-use-irrklang
 
     - name: Add msbuild to PATH
       uses: microsoft/setup-msbuild@v2
