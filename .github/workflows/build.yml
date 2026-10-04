@@ -124,6 +124,19 @@ jobs:
         git log -1 --format="Using Irrlicht version: %H  %ci  %s"
         cd ..
 
+    - name: Build SFML (network part only)
+      run: |
+        # TDOANE's version of the game uses SFML's network module to download
+        # online avatars and card sleeves. Build it as a static library so the
+        # finished exe doesn't depend on any extra DLL versions.
+        git clone --depth=1 --branch 2.6.2 https://github.com/SFML/SFML.git sfml-src
+        cmake -S sfml-src -B sfml-build -G "Visual Studio 17 2022" -A Win32 `
+          -DBUILD_SHARED_LIBS=OFF -DSFML_USE_STATIC_STD_LIBS=ON `
+          -DSFML_BUILD_WINDOW=OFF -DSFML_BUILD_GRAPHICS=OFF -DSFML_BUILD_AUDIO=OFF `
+          -DSFML_BUILD_NETWORK=ON -DSFML_BUILD_EXAMPLES=OFF -DSFML_BUILD_DOC=OFF `
+          -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/sfml"
+        cmake --build sfml-build --config Release --target install
+
     - name: Check DirectX SDK
       id: dxsdk
       uses: actions/cache@v4
@@ -152,6 +165,18 @@ jobs:
       run: |
         xcopy /E premake\* .
         xcopy /E resource\* .
+
+    - name: Tell the game's build where SFML is
+      run: |
+        Add-Content gframe/premake5.lua @'
+
+        project "YGOPro"
+            filter {}
+            includedirs { "../sfml/include" }
+            libdirs { "../sfml/lib" }
+            defines { "SFML_STATIC" }
+            links { "sfml-network-s", "sfml-system-s", "ws2_32", "winmm" }
+        '@
 
     - name: Use premake to generate Visual Studio solution (2022)
       run: |
