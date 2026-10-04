@@ -1,19 +1,23 @@
-name: Automated Test Build
+# Builds YGOPro.exe for Windows on GitHub's computers.
+# Two copies are built, one with each rules engine, so they can be compared.
+# Runs automatically after every change, or by hand from the Actions tab.
+name: Build Windows test copy
 
 on:
   push:
     branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+  workflow_dispatch:
 
 jobs:
   build-windows:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2019, windows-2022]
+        # "recorded" = the engine version this source code points to
+        # "kaiba"    = Kaiba Corporation's own engine (kaibapro-core)
+        engine: [recorded, kaiba]
 
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-2022
 
     steps:
     - name: Checkout repository with submodules
@@ -22,16 +26,20 @@ jobs:
         fetch-depth: 1
         submodules: true
 
-    - name: Update submodules
+    - name: Switch to Kaiba's rules engine
+      if: matrix.engine == 'kaiba'
       run: |
         cd ocgcore
-        git checkout master
-        git pull origin master
+        git fetch --depth=1 https://github.com/Kaiba-Corporation/kaibapro-core.git HEAD
+        git checkout -f FETCH_HEAD
         cd ..
-#        cd script
-#        git checkout master
-#        git pull origin master
-#        cd ..
+
+    - name: Show which rules engine version is used
+      run: |
+        cd ocgcore
+        git log -1 --format="%H  %ci  %s"
+        if (!(Test-Path premake5.lua)) { Write-Error "This engine version has no premake5.lua build file."; exit 1 }
+        cd ..
 
     - name: Download premake
       id: premake
@@ -134,13 +142,7 @@ jobs:
         xcopy /E premake\* .
         xcopy /E resource\* .
 
-    - name: Use premake to generate Visual Studio solution (2019)
-      if: matrix.os == 'windows-2019'
-      run: |
-        .\premake5.exe vs2019 --winxp-support
-
     - name: Use premake to generate Visual Studio solution (2022)
-      if: matrix.os == 'windows-2022'
       run: |
         .\premake5.exe vs2022
 
@@ -154,211 +156,6 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: YGOPro-${{ matrix.os }}
+        name: YGOPro-${{ matrix.engine }}-engine
         path: |
           bin/release/YGOPro.exe
-
-  build-linux:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-#          - ubuntu-20.04
-          - ubuntu-22.04
-          - ubuntu-24.04
-        include:
-#          - os: ubuntu-20.04
-#            premake_version: 5.0.0-beta2
-          - os: ubuntu-22.04
-            premake_version: 5.0.0-beta4
-          - os: ubuntu-24.04
-            premake_version: 5.0.0-beta5
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-    - name: Checkout repository with submodules
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 1
-        submodules: true
-
-    - name: Update submodules
-      run: |
-        cd ocgcore
-        git checkout master
-        git pull origin master
-        cd ..
-#        cd script
-#        git checkout master
-#        git pull origin master
-#        cd ..
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libevent-dev libfreetype6-dev libgl1-mesa-dev libglu1-mesa-dev libsqlite3-dev libxxf86vm-dev
-
-    - name: Download premake
-      id: premake
-      uses: mercury233/action-cache-download-file@v1.0.0
-      with:
-        url: https://github.com/premake/premake-core/releases/download/v${{ matrix.premake_version }}/premake-${{ matrix.premake_version }}-linux.tar.gz
-        filename: premake5.tar.gz
-
-    - name: Extract premake
-      run: |
-        tar xf ${{ steps.premake.outputs.filepath }}
-        chmod +x ./premake5
-
-    - name: Download lua
-      id: lua
-      uses: mercury233/action-cache-download-file@v1.0.0
-      with:
-        url: https://www.lua.org/ftp/lua-5.4.7.tar.gz
-
-    - name: Extract lua
-      run: |
-        tar xf ${{ steps.lua.outputs.filepath }}
-        mv lua-5.4.7 lua
-
-    - name: Download irrlicht
-      run: |
-        git clone --depth=1 https://github.com/mercury233/irrlicht
-
-    - name: Copy premake files
-      run: |
-        cp -r premake/* .
-        cp -r resource/* .
-
-    - name: Use premake to generate make files
-      run: |
-        ./premake5 gmake \
-          --no-use-irrklang \
-          --freetype-include-dir="/usr/include/freetype2"
-
-    - name: Make
-      run: |
-        cd build
-        make -j 4 config=release
-        cd ..
-
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: YGOPro-${{ matrix.os }}
-        path: |
-          bin/release/YGOPro
-
-  build-macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - macos-13
-          - macos-15
-        include:
-          - os: macos-13
-            premake_version: 5.0.0-beta5
-          - os: macos-15
-            premake_version: 5.0.0-beta5
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-    - name: Checkout repository with submodules
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 1
-        submodules: true
-
-    - name: Update submodules
-      run: |
-        cd ocgcore
-        git checkout master
-        git pull origin master
-        cd ..
-#        cd script
-#        git checkout master
-#        git pull origin master
-#        cd ..
-
-#    - name: Install dependencies
-#      run: |
-#        brew install freetype libevent libx11 sqlite zlib
-
-    - name: Download premake
-      id: premake
-      uses: mercury233/action-cache-download-file@v1.0.0
-      with:
-        url: https://github.com/premake/premake-core/releases/download/v${{ matrix.premake_version }}/premake-${{ matrix.premake_version }}-macosx.tar.gz
-        filename: premake5.tar.gz
-
-    - name: Extract premake
-      run: |
-        tar xf ${{ steps.premake.outputs.filepath }}
-        chmod +x ./premake5
-
-    - name: Download lua
-      id: lua
-      uses: mercury233/action-cache-download-file@v1.0.0
-      with:
-        url: https://www.lua.org/ftp/lua-5.4.7.tar.gz
-
-    - name: Extract lua
-      run: |
-        tar xf ${{ steps.lua.outputs.filepath }}
-        mv lua-5.4.7 lua
-
-    - name: Download irrlicht
-      run: |
-        git clone --depth=1 https://github.com/mercury233/irrlicht
-
-    - name: Build irrlicht
-      run: |
-        cd irrlicht/source/Irrlicht/MacOSX
-        xcodebuild -project MacOSX.xcodeproj
-        cd ../../../..
-
-    - name: Copy premake files
-      run: |
-        cp -r premake/* .
-        cp -r resource/* .
-
-    - name: Use premake to generate make files (Intel)
-      if: runner.arch == 'X64'
-      run: |
-        ./premake5 gmake \
-          --cc=clang \
-          --no-use-irrklang \
-          --freetype-include-dir="/usr/local/include/freetype2" \
-          --irrlicht-include-dir="../irrlicht/include" \
-          --irrlicht-lib-dir="../irrlicht/source/Irrlicht/MacOSX/build/Release"
-
-    - name: Use premake to generate make files (ARM64)
-      if: runner.arch == 'ARM64'
-      run: |
-        ./premake5 gmake \
-          --cc=clang \
-          --no-use-irrklang \
-          --event-include-dir="/opt/homebrew/include" \
-          --event-lib-dir="/opt/homebrew/lib" \
-          --freetype-include-dir="/opt/homebrew/include/freetype2" \
-          --freetype-lib-dir="/opt/homebrew/lib" \
-          --sqlite-include-dir="/opt/homebrew/opt/sqlite/include" \
-          --sqlite-lib-dir="/opt/homebrew/opt/sqlite/lib" \
-          --irrlicht-include-dir="../irrlicht/include" \
-          --irrlicht-lib-dir="../irrlicht/source/Irrlicht/MacOSX/build/Release"
-
-    - name: Make
-      run: |
-        cd build
-        make -j 3 config=release
-        cd ..
-
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: YGOPro-${{ matrix.os }}
-        path: |
-          bin/*
