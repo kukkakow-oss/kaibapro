@@ -104,14 +104,24 @@ jobs:
 
     - name: Download irrlicht
       run: |
-        # Use the version of this Irrlicht copy from when the game's source code
-        # was last updated (April 2025). Later versions changed parts of
-        # Irrlicht that the game's code relies on.
+        # The game's code expects the older (1.8-based) version of this Irrlicht
+        # copy; newer versions are 1.9-based. Search the history for the newest
+        # version whose button code matches what the game expects.
         git clone https://github.com/mercury233/irrlicht
         cd irrlicht
-        $commit = git rev-list -n 1 --before="2025-04-11" HEAD
-        git checkout $commit
-        git log -1 --format="%H  %ci  %s"
+        $pattern = 'bool\s+loop\s*=\s*false\s*\)\s*=\s*0'
+        $found = $null
+        foreach ($list in @('--first-parent HEAD', '--all')) {
+          foreach ($c in (git rev-list $list.Split(' '))) {
+            $button = (git show "${c}:include/IGUIButton.h" 2>$null) -join "`n"
+            $types = (git show "${c}:include/irrTypes.h" 2>$null) -join "`n"
+            if ($button -match $pattern -and $types -match '_IRR_DEBUG_BREAK_IF') { $found = $c; break }
+          }
+          if ($found) { break }
+        }
+        if (-not $found) { Write-Error "No matching Irrlicht version found."; exit 1 }
+        git checkout $found
+        git log -1 --format="Using Irrlicht version: %H  %ci  %s"
         cd ..
 
     - name: Check DirectX SDK
