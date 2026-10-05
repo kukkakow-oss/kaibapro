@@ -1,6 +1,6 @@
 # Builds the modified YGOPro.exe (Bot Theater) for Windows on GitHub's computers,
 # using Kaiba Corporation's rules engine (kaibapro-core).
-# Built without sound for now (see the note further down).
+# Sound uses miniaudio (irrKlang, the original sound library, is no longer available).
 # Runs automatically after every change, or by hand from the Actions tab.
 name: Build Bot Theater
 
@@ -91,8 +91,11 @@ jobs:
         7z x ${{ steps.sqlite.outputs.filepath }}
         move sqlite-amalgamation-3490100 sqlite3
 
-    # irrKlang (the sound library) is no longer publicly downloadable,
-    # so this copy is built without sound for now.
+    # irrKlang (the original sound library) is no longer publicly downloadable,
+    # so the game is built with miniaudio for sound instead.
+    - name: Download miniaudio
+      run: |
+        git clone --depth=1 --branch 0.11.21 https://github.com/mackron/miniaudio.git miniaudio
 
     - name: Download irrlicht
       run: |
@@ -158,16 +161,17 @@ jobs:
         xcopy /E premake\* .
         xcopy /E resource\* .
 
-    - name: Tell the game's build where SFML is
+    - name: Add SFML and miniaudio to the game's build
       run: |
         Add-Content gframe/premake5.lua @'
 
         project "YGOPro"
             filter {}
-            includedirs { "../sfml/include" }
+            includedirs { "../sfml/include", "../miniaudio" }
             libdirs { "../sfml/lib" }
-            defines { "SFML_STATIC" }
+            defines { "SFML_STATIC", "YGOPRO_USE_MINIAUDIO" }
             links { "sfml-network-s", "sfml-system-s", "ws2_32", "winmm" }
+            files { "miniaudio_impl.c" }
         '@
 
     - name: Use premake to generate Visual Studio solution (2022)
