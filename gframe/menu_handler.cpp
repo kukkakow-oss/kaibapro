@@ -702,6 +702,22 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 		}
 		break;
 	}
+	case irr::EET_KEY_INPUT_EVENT: {
+		// Bot Theater: Enter on the host window hosts the next duel, no mouse needed.
+		if(event.KeyInput.Key == irr::KEY_RETURN && event.KeyInput.PressedDown
+			&& botTheater.enabled
+			&& mainGame->wCreateHost->isVisible() && mainGame->btnHostConfirm->isEnabled()
+			&& !mainGame->wHostPrepare->isVisible() && !mainGame->wQuery->isVisible()) {
+			irr::SEvent click;
+			click.EventType = irr::EET_GUI_EVENT;
+			click.GUIEvent.Caller = mainGame->btnHostConfirm;
+			click.GUIEvent.Element = 0;
+			click.GUIEvent.EventType = irr::gui::EGET_BUTTON_CLICKED;
+			mainGame->device->postEventFromUser(click);
+			return true;
+		}
+		break;
+	}
 	default: break;
 	}
 	return false;
