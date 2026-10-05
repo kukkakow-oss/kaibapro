@@ -4,6 +4,8 @@
 #include "duelclient.h"
 #include "network.h"
 #include "image_manager.h"
+#include "materials.h"
+#include <cmath>
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -71,6 +73,10 @@ void BotTheater::Load() {
 		else if(key == "info_follows_actions") info_follows_actions = ToInt(value, 1) != 0;
 		else if(key == "save_replays") save_replays = ToInt(value, 0) != 0;
 		else if(key == "turn_highlight") turn_highlight = ToInt(value, 1) != 0;
+		else if(key == "holograms") holograms_on = ToInt(value, 1) != 0;
+		else if(key == "hologram_size") hologram_size = ToInt(value, hologram_size);
+		else if(key == "hologram_seconds") hologram_seconds = std::strtod(value.c_str(), nullptr);
+		else if(key == "hologram_opacity") hologram_opacity = ToInt(value, hologram_opacity);
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -109,6 +115,13 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "save_replays = %d\n\n", save_replays ? 1 : 0);
 	std::fprintf(fp, "# 1 = gold frame around the avatar of the player whose turn it is\n");
 	std::fprintf(fp, "turn_highlight = %d\n\n", turn_highlight ? 1 : 0);
+	std::fprintf(fp, "# Holograms of summoned monsters' art. 1 = on, 0 = off\n");
+	std::fprintf(fp, "# hologram_size and hologram_opacity are percentages (100 = normal),\n");
+	std::fprintf(fp, "# hologram_seconds is how long each one stays up\n");
+	std::fprintf(fp, "holograms = %d\n", holograms_on ? 1 : 0);
+	std::fprintf(fp, "hologram_size = %d\n", hologram_size);
+	std::fprintf(fp, "hologram_seconds = %.2f\n", hologram_seconds);
+	std::fprintf(fp, "hologram_opacity = %d\n\n", hologram_opacity);
 	std::fprintf(fp, "# Avatars: put images in textures/avatars named after the bots, e.g.\n");
 	std::fprintf(fp, "# textures/avatars/Lady Luck.png (.png, .jpg or .jpeg). Characters that\n");
 	std::fprintf(fp, "# Windows doesn't allow in file names (\\ / : * ? \" < > |) become _ instead.\n\n");
@@ -239,9 +252,12 @@ bool BotTheater::SkipEndPrompts() const {
 	return active && mainGame->dInfo.player_type == NETPLAYER_TYPE_OBSERVER && !mainGame->dInfo.isReplay;
 }
 
+bool BotTheater::SpectatingBotRoom() const {
+	return active && mainGame->dInfo.player_type == NETPLAYER_TYPE_OBSERVER && !mainGame->dInfo.isReplay;
+}
+
 bool BotTheater::InfoFollowsActions() const {
-	return active && info_follows_actions
-		&& mainGame->dInfo.player_type == NETPLAYER_TYPE_OBSERVER && !mainGame->dInfo.isReplay;
+	return info_follows_actions && SpectatingBotRoom();
 }
 
 void BotTheater::OnCardAction(unsigned int code, int local_player) {
@@ -334,12 +350,189 @@ void BotTheater::OnDuelStart() {
 	info_owner = -1;
 	turn_text[0] = 0;
 	turn_player = -1;
+	holograms.clear();
 	if(!active)
 		return;
 	int seats = mainGame->dInfo.isTag ? 4 : 2;
 	for(int i = 0; i < seats; ++i) {
 		std::wstring path = FindAvatar(mainGame->stHostPrepDuelist[i]->getToolTipText().c_str());
 		imageManager.LoadLocalAvatar(i, path.empty() ? L"textures/avatar.png" : path.c_str());
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Holograms: the summoned monster's art rises out of its zone, hovers with a
+// cyan glow, then fades.
+
+void BotTheater::OnSummon(unsigned int code, int local_player, unsigned int location, int sequence, unsigned int position) {
+	const unsigned int MONSTER_ZONE = 0x04, FACE_DOWN = 0x0a;
+	if(!code || !holograms_on || !SpectatingBotRoom())
+		return;
+	if(!(location & MONSTER_ZONE) || (position & FACE_DOWN) || sequence < 0 || sequence > 6
+		|| local_player < 0 || local_player > 1)
+		return;
+	mainGame->gMutex.lock();
+	if(holograms.size() < 6)
+		holograms.push_back(Hologram{ code, local_player, sequence, 0 });
+	mainGame->gMutex.unlock();
+}
+
+void BotTheater::MakeHologramTextures() {
+	auto driver = mainGame->driver;
+	if(!tWhite) {
+		irr::video::IImage* img = driver->createImage(irr::video::ECF_A8R8G8B8, irr::core::dimension2du(4, 4));
+		img->fill(irr::video::SColor(255, 255, 255, 255));
+		tWhite = driver->addTexture("bot_theater_white", img);
+		img->drop();
+	}
+	if(!tGlow) {
+		// Soft-edged rectangle: solid in the middle, fading to nothing at the edges.
+		const int size = 64;
+		irr::video::IImage* img = driver->createImage(irr::video::ECF_A8R8G8B8, irr::core::dimension2du(size, size));
+		for(int y = 0; y < size; ++y) {
+			for(int x = 0; x < size; ++x) {
+				float dx = std::fabs((x + 0.5f) / size * 2 - 1), dy = std::fabs((y + 0.5f) / size * 2 - 1);
+				float edge = std::max(dx, dy);	// 0 in the middle, 1 at the border
+				float a = edge < 0.6f ? 1.0f : 1.0f - (edge - 0.6f) / 0.4f;
+				a = a * a;
+				img->setPixel(x, y, irr::video::SColor((irr::u32)(a * 255), 255, 255, 255));
+			}
+		}
+		tGlow = driver->addTexture("bot_theater_glow", img);
+		img->drop();
+	}
+}
+
+static void DrawQuad(irr::video::IVideoDriver* driver, const irr::core::vector3df& tl, const irr::core::vector3df& tr,
+	const irr::core::vector3df& bl, const irr::core::vector3df& br, irr::video::SColor top, irr::video::SColor bottom,
+	float u1 = 0, float v1 = 0, float u2 = 1, float v2 = 1) {
+	irr::core::vector3df n(0, 0, 1);
+	irr::video::S3DVertex v[4] = {
+		irr::video::S3DVertex(tl, n, top, irr::core::vector2df(u1, v1)),
+		irr::video::S3DVertex(tr, n, top, irr::core::vector2df(u2, v1)),
+		irr::video::S3DVertex(bl, n, bottom, irr::core::vector2df(u1, v2)),
+		irr::video::S3DVertex(br, n, bottom, irr::core::vector2df(u2, v2)),
+	};
+	irr::u16 idx[6] = { 0, 1, 2, 2, 1, 3 };
+	driver->drawVertexPrimitiveList(v, 4, idx, 2);
+}
+
+void BotTheater::DrawHolograms() {
+	// Called every frame from the field drawing, with the game's GUI lock held.
+	if(holograms.empty())
+		return;
+	if(!SpectatingBotRoom() || !mainGame->dInfo.isStarted) {
+		holograms.clear();
+		return;
+	}
+	MakeHologramTextures();
+	auto driver = mainGame->driver;
+	driver->setTransform(irr::video::ETS_WORLD, irr::core::IdentityMatrix);
+	irr::video::SMaterial mat;
+	// Same blending the game uses for cards, but taking transparency from both the
+	// image (for the soft glow) and the vertex colours (for fading in and out).
+	mat.MaterialType = irr::video::EMT_ONETEXTURE_BLEND;
+	mat.MaterialTypeParam = irr::video::pack_textureBlendFunc(irr::video::EBF_SRC_ALPHA, irr::video::EBF_ONE_MINUS_SRC_ALPHA,
+		irr::video::EMFN_MODULATE_1X, irr::video::EAS_VERTEX_COLOR | irr::video::EAS_TEXTURE);
+	mat.setFlag(irr::video::EMF_LIGHTING, false);
+	mat.setFlag(irr::video::EMF_ZBUFFER, false);	// always drawn on top of the field
+	mat.setFlag(irr::video::EMF_ZWRITE_ENABLE, false);
+	mat.setFlag(irr::video::EMF_BACK_FACE_CULLING, false);
+
+	// Face the game's fixed camera (at (4.2, 8, 7.8), looking at (4.2, 0, 0)).
+	irr::core::vector3df view(0, -8.0f, -7.8f);
+	view.normalize();
+	irr::core::vector3df up = irr::core::vector3df(0, 0, 1) - view * view.Z;
+	up.normalize();
+	irr::core::vector3df right(1, 0, 0);
+
+	int total = std::max(30, (int)(hologram_seconds * 60));
+	int rise = std::min(18, total / 4);
+	int fade = rise;
+	float size_scale = std::max(10, hologram_size) / 100.0f;
+	float opacity = std::min(100, std::max(5, hologram_opacity)) / 100.0f;
+
+	for(size_t i = 0; i < holograms.size();) {
+		Hologram& h = holograms[i];
+		const auto& zone = matManager.vFieldMzone[h.side][h.sequence];
+		irr::core::vector3df center = (zone[0].Pos + zone[1].Pos + zone[2].Pos + zone[3].Pos) / 4.0f;
+
+		// Animation: rise and grow, hover with a gentle bob, then fade while drifting up.
+		float alpha, scale, lift;
+		if(h.frame < rise) {
+			float p = (h.frame + 1) / (float)rise;
+			p = 1 - (1 - p) * (1 - p);
+			alpha = p;
+			scale = 0.4f + 0.6f * p;
+			lift = 0.15f + 0.35f * p;
+		} else if(h.frame >= total - fade) {
+			float q = (total - h.frame) / (float)fade;
+			alpha = q;
+			scale = 1.0f + 0.08f * (1 - q);
+			lift = 0.5f + 0.15f * (1 - q);
+		} else {
+			alpha = 1;
+			scale = 1;
+			lift = 0.5f;
+		}
+		lift += 0.04f * std::sin(h.frame * 0.1f);
+		alpha *= opacity;
+
+		// Crop to the art box (measured from standard card images); Pendulums stop above their text box.
+		bool pendulum = false;
+		auto cp = dataManager.GetCodePointer(h.code);
+		if(cp != dataManager.datas_end() && (cp->second.type & 0x1000000))
+			pendulum = true;
+		float u1 = 50 / 421.0f, u2 = 371 / 421.0f, v1 = 113 / 614.0f, v2 = (pendulum ? 386 : 434) / 614.0f;
+		float width = 1.2f * size_scale * scale;
+		float height = width * ((v2 - v1) * 614.0f) / ((u2 - u1) * 421.0f);
+
+		irr::core::vector3df base = center + irr::core::vector3df(0, 0, lift);
+		irr::core::vector3df half = right * (width / 2);
+		irr::core::vector3df tall = up * height;
+		irr::core::vector3df tl = base - half + tall, tr = base + half + tall, bl = base - half, br = base + half;
+
+		auto a = [alpha](float f) { return (irr::u32)std::min(255.0f, std::max(0.0f, 255 * alpha * f)); };
+		irr::video::SColor cyanTop(a(0.15f), 80, 220, 255), cyanBottom(a(0.45f), 80, 220, 255);
+
+		// Projector beam from the card to the bottom of the art.
+		mat.setTexture(0, tWhite);
+		driver->setMaterial(mat);
+		irr::core::vector3df floorHalf = right * 0.3f;
+		irr::core::vector3df floor = center + irr::core::vector3df(0, 0, 0.02f);
+		DrawQuad(driver, bl, br, floor - floorHalf, floor + floorHalf, cyanTop, cyanBottom);
+
+		// Soft glow behind the art.
+		irr::core::vector3df gHalf = half * 1.25f, gExtra = up * (height * 0.125f);
+		mat.setTexture(0, tGlow);
+		driver->setMaterial(mat);
+		irr::video::SColor glow(a(0.55f), 80, 220, 255);
+		DrawQuad(driver, base - gHalf + tall + gExtra, base + gHalf + tall + gExtra, base - gHalf - gExtra, base + gHalf - gExtra, glow, glow);
+
+		// The art itself, slightly cyan-tinted.
+		irr::video::ITexture* art = imageManager.GetTexture(h.code);
+		if(art) {
+			mat.setTexture(0, art);
+			driver->setMaterial(mat);
+			irr::video::SColor tint(a(1.0f), 215, 245, 255);
+			DrawQuad(driver, tl, tr, bl, br, tint, tint, u1, v1, u2, v2);
+		}
+
+		// Thin bright frame.
+		mat.setTexture(0, tWhite);
+		driver->setMaterial(mat);
+		irr::video::SColor edge(a(0.9f), 140, 235, 255);
+		float t = width * 0.015f;
+		irr::core::vector3df tx = right * t, ty = up * t;
+		DrawQuad(driver, tl, tr, tl - ty, tr - ty, edge, edge);			// top
+		DrawQuad(driver, bl + ty, br + ty, bl, br, edge, edge);			// bottom
+		DrawQuad(driver, tl, tl + tx, bl, bl + tx, edge, edge);			// left
+		DrawQuad(driver, tr - tx, tr, br - tx, br, edge, edge);			// right
+
+		if(++h.frame >= total)
+			holograms.erase(holograms.begin() + i);
+		else
+			++i;
 	}
 }
 

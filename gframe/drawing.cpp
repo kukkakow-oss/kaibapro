@@ -710,6 +710,7 @@ void Game::DrawMisc() {
 			DrawShadowText(numFont, dataManager.GetNumString(dField.remove[1].size()), Resize(420, 311, 464, 282), Resize(0, 1, 2, 1), mainGame->extracolor, 0xff000000, true, false, 0);
 		}
 	}
+	botTheater.DrawHolograms();	// Bot Theater: summoned monsters' art floating above the field
 }
 void Game::DrawStatus(ClientCard* pcard, int x1, int y1, int x2, int y2) {
 	DrawShadowText(adFont, L"/", Resize(x1 - 3, y1 + 1, x1 + 5, y1 + 21), Resize(1, 1, 1, 1), mainGame->statcolor, 0xff000000, true, false, 0);
