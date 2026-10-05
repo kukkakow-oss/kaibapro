@@ -9,6 +9,7 @@
 #include "image_manager.h"
 #include "sound_manager.h"
 #include "game.h"
+#include "bot_theater.h"
 
 namespace ygo {
 
@@ -63,6 +64,7 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 			}
 			case BUTTON_JOIN_HOST: {
 				bot_mode = false;
+				botTheater.active = false;
 				mainGame->TrimText(mainGame->ebJoinHost);
 				mainGame->TrimText(mainGame->ebJoinPort);
 				char ip[20];
@@ -128,6 +130,7 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 			}
 			case BUTTON_HOST_CONFIRM: {
 				bot_mode = false;
+				botTheater.OnHostConfirm();
 				BufferIO::CopyWideString(mainGame->ebServerName->getText(), mainGame->gameConf.gamename);
 				if(!NetServer::StartServer(mainGame->gameConf.serverport)) {
 					soundManager.PlaySoundEffect(SOUND_INFO);
@@ -209,6 +212,8 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 				mainGame->HideElement(mainGame->wHostPrepare);
 				if(bot_mode)
 					mainGame->ShowElement(mainGame->wSinglePlay);
+				else if(botTheater.active)
+					botTheater.ShowWindowAfterRoom();
 				else
 					mainGame->ShowElement(mainGame->wLanWindow);
 				mainGame->wChat->setVisible(false);
@@ -346,6 +351,7 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 				if(sel == -1)
 					break;
 				bot_mode = true;
+				botTheater.active = false;
 #ifdef _WIN32
 				if(!NetServer::StartServer(mainGame->gameConf.serverport)) {
 					soundManager.PlaySoundEffect(SOUND_INFO);

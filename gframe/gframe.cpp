@@ -1,6 +1,7 @@
 #include "config.h"
 #include "game.h"
 #include "data_manager.h"
+#include "bot_theater.h"
 #include <event2/thread.h>
 #include <clocale>
 #include <memory>
@@ -59,6 +60,8 @@ int main(int argc, char* argv[]) {
 	ygo::mainGame = &_game;
 	if(!ygo::mainGame->Initialize())
 		return 0;
+	ygo::botTheater.Load();
+	ygo::botTheater.ApplyToHostWindow();
 
 #ifdef _WIN32
 	int wargc = 0;
@@ -190,6 +193,11 @@ int main(int argc, char* argv[]) {
 				ClickButton(ygo::mainGame->btnLoadSinglePlay);
 			break;
 		}
+	}
+	if(wargc <= 1 && ygo::botTheater.enabled) { // Bot Theater: host a bot room straight away
+		ygo::mainGame->HideElement(ygo::mainGame->wMainMenu);
+		ygo::mainGame->ShowElement(ygo::mainGame->wCreateHost);
+		ClickButton(ygo::mainGame->btnHostConfirm);
 	}
 	ygo::mainGame->MainLoop();
 #ifdef _WIN32

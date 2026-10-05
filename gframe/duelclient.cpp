@@ -6,6 +6,7 @@
 #include "sound_manager.h"
 #include "single_mode.h"
 #include "game.h"
+#include "bot_theater.h"
 #include "deck_manager.h"
 #include "replay.h"
 #include <thread>
@@ -608,6 +609,7 @@ void DuelClient::HandleSTOCPacketLan(unsigned char* data, int len) {
 			}
 		}
 		mainGame->dInfo.player_type = selftype;
+		botTheater.OnTypeChange(selftype);
 		break;
 	}
 	case STOC_DUEL_START: {
@@ -716,6 +718,8 @@ void DuelClient::HandleSTOCPacketLan(unsigned char* data, int len) {
 		mainGame->device->setEventReceiver(&mainGame->menuHandler);
 		if(bot_mode)
 			mainGame->ShowElement(mainGame->wSinglePlay);
+		else if(botTheater.active)
+			botTheater.ShowWindowAfterRoom();
 		else
 			mainGame->ShowElement(mainGame->wLanWindow);
 		mainGame->gMutex.unlock();
@@ -914,13 +918,11 @@ void DuelClient::HandleSTOCPacketLan(unsigned char* data, int len) {
 			mainGame->chkHostPrepReady[pos]->setChecked(false);
 			mainGame->stHostPrepOB->setText(watchbuf);
 		}
-		if(mainGame->chkHostPrepReady[0]->isChecked() && mainGame->chkHostPrepReady[1]->isChecked()
-			&& (!mainGame->dInfo.isTag || (mainGame->chkHostPrepReady[2]->isChecked() && mainGame->chkHostPrepReady[3]->isChecked()))) {
-			mainGame->btnHostPrepStart->setEnabled(true);
-		} else {
-			mainGame->btnHostPrepStart->setEnabled(false);
-		}
+		bool all_ready = mainGame->chkHostPrepReady[0]->isChecked() && mainGame->chkHostPrepReady[1]->isChecked()
+			&& (!mainGame->dInfo.isTag || (mainGame->chkHostPrepReady[2]->isChecked() && mainGame->chkHostPrepReady[3]->isChecked()));
+		mainGame->btnHostPrepStart->setEnabled(all_ready);
 		mainGame->gMutex.unlock();
+		botTheater.OnReadyChanged(all_ready, is_host);
 		break;
 	}
 	case STOC_HS_WATCH_CHANGE: {
@@ -1259,6 +1261,8 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 		mainGame->dInfo.isFirst =  (playertype & 0xf) ? false : true;
 		if(playertype & 0xf0)
 			mainGame->dInfo.player_type = 7;
+		if(mainGame->dInfo.player_type == 7 && !mainGame->dInfo.isReplay)
+			mainGame->wPhase->setVisible(true); // spectators otherwise lose it after game 1 of a match
 		if(mainGame->dInfo.isTag) {
 			if(mainGame->dInfo.isFirst)
 				mainGame->dInfo.tag_player[1] = true;
@@ -2561,7 +2565,9 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 		}
 		mainGame->btnPhaseStatus->setPressed(true);
 		mainGame->btnPhaseStatus->setVisible(true);
-		if(!mainGame->dInfo.isReplay || !mainGame->dInfo.isReplaySkiping) {
+		if(botTheater.SkipPhaseBanner()) {
+			soundManager.PlaySoundEffect(SOUND_PHASE);
+		} else if(!mainGame->dInfo.isReplay || !mainGame->dInfo.isReplaySkiping) {
 			soundManager.PlaySoundEffect(SOUND_PHASE);
 			mainGame->showcard = 101;
 			mainGame->WaitFrameSignal(40);
