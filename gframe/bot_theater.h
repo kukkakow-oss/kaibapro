@@ -15,6 +15,8 @@ namespace irr { namespace video { class ITexture; } }
 
 namespace ygo {
 
+class ClientCard;
+
 class BotTheater {
 public:
 	// Settings from bot_theater.conf
@@ -28,6 +30,9 @@ public:
 	int hologram_size = 100;		// percent
 	double hologram_seconds = 1.5;
 	int hologram_opacity = 90;		// percent
+	bool hologram_stay = true;		// stay (smaller and dimmer) until the card leaves its zone
+	int hologram_rest_size = 80;	// percent of full size while resting
+	int hologram_rest_opacity = 50;	// percent of full opacity while resting
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -86,6 +91,8 @@ private:
 		int side;		// 0 = bottom player, 1 = top
 		int sequence;	// monster zone
 		int frame;
+		ClientCard* card;	// the summoned card, once it's seen in its zone
+		int leave_frame;	// -1 while the card is still there, then counts the fade-out
 	};
 	std::vector<Hologram> holograms;
 	irr::video::ITexture* tWhite = nullptr;
