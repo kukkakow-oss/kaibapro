@@ -194,10 +194,11 @@ int main(int argc, char* argv[]) {
 			break;
 		}
 	}
-	if(wargc <= 1 && ygo::botTheater.enabled) { // Bot Theater: host a bot room straight away
+	if(wargc <= 1 && ygo::botTheater.enabled) { // Bot Theater: open to the host window with the saved settings
 		ygo::mainGame->HideElement(ygo::mainGame->wMainMenu);
 		ygo::mainGame->ShowElement(ygo::mainGame->wCreateHost);
-		ClickButton(ygo::mainGame->btnHostConfirm);
+		if(ygo::botTheater.skip_host_window)
+			ClickButton(ygo::mainGame->btnHostConfirm);
 	}
 	ygo::mainGame->MainLoop();
 #ifdef _WIN32

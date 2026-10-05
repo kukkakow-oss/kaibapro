@@ -16,6 +16,7 @@ class BotTheater {
 public:
 	// Settings from bot_theater.conf
 	bool enabled = true;
+	bool skip_host_window = false;
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
