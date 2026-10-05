@@ -418,6 +418,8 @@ void TagDuel::TPResult(DuelPlayer* dp, unsigned char tp) {
 	if(host_info.no_shuffle_deck)
 		opt |= DUEL_PSEUDO_SHUFFLE;
 	opt |= DUEL_TAG_MODE;
+	if(botTheater.SplitZones())
+		opt |= DUEL_SPLIT_ZONES;	// Bot Theater: each teammate has their own section of the field
 	last_replay.WriteInt32(host_info.start_lp, false);
 	last_replay.WriteInt32(host_info.start_hand, false);
 	last_replay.WriteInt32(host_info.draw_count, false);

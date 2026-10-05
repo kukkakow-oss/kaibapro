@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace irr { namespace video { class ITexture; } }
+namespace irr { namespace video { class ITexture; } namespace gui { class IGUICheckBox; } }
 
 namespace ygo {
 
@@ -36,6 +36,7 @@ public:
 	bool hologram_backrow = true;		// Spell/Trap and Pendulum zones too
 	int hologram_backrow_size = 65;	// percent of the monster hologram size
 	double top_hand_raise = 1.0;		// card heights to raise the top player's hand by
+	bool split_zones = false;			// tag duels: each teammate has their own section of the field
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -56,7 +57,7 @@ public:
 
 	void Load();
 	void Save() const;
-	void ApplyToHostWindow() const;
+	void ApplyToHostWindow();
 	void ReadFromHostWindow();
 
 	// Hooks called from the menu and network code
@@ -67,6 +68,7 @@ public:
 	bool RevealHands() const { return active && reveal_hands; }
 	bool InfoFollowsActions() const;
 	bool SkipEndPrompts() const;
+	bool SplitZones() const { return active && split_zones; }
 	void OnCardAction(unsigned int code, int local_player);
 	void OnDuelStart();
 	void SetTurnPlayer(int local_player);
@@ -100,6 +102,7 @@ private:
 		int leave_frame;	// -1 while the card is still there, then counts the fade-out
 	};
 	std::vector<Hologram> holograms;
+	irr::gui::IGUICheckBox* chkSplitZones = nullptr;	// added to the host window
 	irr::video::ITexture* tWhite = nullptr;
 	irr::video::ITexture* tGlow = nullptr;
 	bool SpectatingBotRoom() const;

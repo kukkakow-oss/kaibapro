@@ -84,6 +84,7 @@ void BotTheater::Load() {
 		else if(key == "hologram_backrow") hologram_backrow = ToInt(value, 1) != 0;
 		else if(key == "hologram_backrow_size") hologram_backrow_size = ToInt(value, hologram_backrow_size);
 		else if(key == "top_hand_raise") top_hand_raise = std::strtod(value.c_str(), nullptr);
+		else if(key == "split_zones") split_zones = ToInt(value, 0) != 0;
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -167,10 +168,19 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "start_hand = %d\n", start_hand);
 	std::fprintf(fp, "draw_count = %d\n", draw_count);
 	std::fprintf(fp, "password = %s\n", ToUTF8(password).c_str());
+	std::fprintf(fp, "# Tag duels only: 1 = each team's first player may only place cards in the left\n");
+	std::fprintf(fp, "# section of the field and its second player in the right (middle zones shared)\n");
+	std::fprintf(fp, "split_zones = %d\n", split_zones ? 1 : 0);
 	std::fclose(fp);
 }
 
-void BotTheater::ApplyToHostWindow() const {
+void BotTheater::ApplyToHostWindow() {
+	if(!chkSplitZones) {
+		// Our own option, in the free row between "Cards per Draw" and "Host Name".
+		chkSplitZones = mainGame->env->addCheckBox(false, irr::core::rect<irr::s32>(20, 327, 360, 347),
+			mainGame->wCreateHost, -1, L"Split zones between teammates (tag duels)");
+	}
+	chkSplitZones->setChecked(split_zones);
 	wchar_t buf[32];
 	auto* lf = mainGame->cbHostLFlist;
 	for(irr::u32 i = 0; i < lf->getItemCount(); ++i) {
@@ -212,6 +222,8 @@ void BotTheater::ReadFromHostWindow() {
 	no_check_deck = mainGame->chkNoCheckDeck->isChecked();
 	no_shuffle_deck = mainGame->chkNoShuffleDeck->isChecked();
 	password = mainGame->ebServerPass->getText();
+	if(chkSplitZones)
+		split_zones = chkSplitZones->isChecked();
 }
 
 void BotTheater::OnHostConfirm() {
