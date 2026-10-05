@@ -70,6 +70,7 @@ void BotTheater::Load() {
 		else if(key == "reveal_hands") reveal_hands = ToInt(value, 1) != 0;
 		else if(key == "info_follows_actions") info_follows_actions = ToInt(value, 1) != 0;
 		else if(key == "save_replays") save_replays = ToInt(value, 0) != 0;
+		else if(key == "turn_highlight") turn_highlight = ToInt(value, 1) != 0;
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -106,6 +107,8 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "# Replays of bot duels are saved without asking. 0 = keep only the latest\n");
 	std::fprintf(fp, "# (as _LastReplay), 1 = keep every one, named by date and time\n");
 	std::fprintf(fp, "save_replays = %d\n\n", save_replays ? 1 : 0);
+	std::fprintf(fp, "# 1 = gold frame around the avatar of the player whose turn it is\n");
+	std::fprintf(fp, "turn_highlight = %d\n\n", turn_highlight ? 1 : 0);
 	std::fprintf(fp, "# Avatars: put images in textures/avatars named after the bots, e.g.\n");
 	std::fprintf(fp, "# textures/avatars/Lady Luck.png (.png, .jpg or .jpeg). Characters that\n");
 	std::fprintf(fp, "# Windows doesn't allow in file names (\\ / : * ? \" < > |) become _ instead.\n\n");
@@ -251,6 +254,7 @@ void BotTheater::OnCardAction(unsigned int code, int local_player) {
 }
 
 void BotTheater::SetTurnPlayer(int local_player) {
+	turn_player = mainGame->LocalPlayer(local_player);	// back to the duel's own numbering
 	const auto& d = mainGame->dInfo;
 	const wchar_t* name;
 	if(local_player == 0)
@@ -261,6 +265,21 @@ void BotTheater::SetTurnPlayer(int local_player) {
 		myswprintf(turn_text, L"%ls's Turn", name);
 	else
 		turn_text[0] = 0;
+}
+
+int BotTheater::TurnSide() const {
+	if(!active || !turn_highlight || turn_player < 0 || !mainGame->dInfo.isStarted)
+		return -1;
+	return mainGame->LocalPlayer(turn_player);	// follows the spectator swap button
+}
+
+void BotTheater::DrawTurnHighlight(int left, int top, int right, int bottom) const {
+	irr::video::SColor gold(255, 255, 200, 40);
+	int thickness = std::max(2, (int)(3 * mainGame->xScale));
+	for(int i = 1; i <= thickness; ++i) {	// drawn just outside the picture, so it isn't covered up
+		irr::core::recti frame(left - i, top - i, right + i, bottom + i);
+		mainGame->driver->draw2DRectangleOutline(frame, gold);
+	}
 }
 
 const wchar_t* BotTheater::TurnText() const {
@@ -314,6 +333,7 @@ void BotTheater::OnDuelStart() {
 	// Called when a duel starts, with the game's GUI lock already held.
 	info_owner = -1;
 	turn_text[0] = 0;
+	turn_player = -1;
 	if(!active)
 		return;
 	int seats = mainGame->dInfo.isTag ? 4 : 2;

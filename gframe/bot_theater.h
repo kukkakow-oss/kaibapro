@@ -20,6 +20,7 @@ public:
 	bool reveal_hands = true;
 	bool info_follows_actions = true;
 	bool save_replays = false;
+	bool turn_highlight = true;
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -56,6 +57,8 @@ public:
 	void SetTurnPlayer(int local_player);
 	const wchar_t* TurnText() const;
 	void DrawInfoBorder() const;
+	int TurnSide() const;	// side whose turn it is: 0 = bottom, 1 = top, -1 = none
+	void DrawTurnHighlight(int left, int top, int right, int bottom) const;
 	void ShowWindowAfterRoom() const;
 
 private:
@@ -67,6 +70,7 @@ private:
 	std::wstring room_password;
 	int info_owner = -1;	// whose action the info window shows: 0 = bottom player, 1 = top
 	wchar_t turn_text[64] = {};
+	int turn_player = -1;	// turn player as the duel numbers them (not affected by swapping sides)
 
 	bool LaunchBots(std::wstring& error);
 	void SystemMessage(const wchar_t* msg) const;

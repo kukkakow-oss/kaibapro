@@ -1402,6 +1402,16 @@ void Game::DrawAvatars()
 		DrawPlayerAvatar(driver, irr::core::vector2di(p2pos.X, p2pos.Y), trueIds[2], true);
 	else
 		DrawPlayerAvatar(driver, irr::core::vector2di(p2pos.X, p2pos.Y), trueIds[3], true);
+	// Bot Theater: frame the avatar of the player whose turn it is
+	int turnSide = botTheater.TurnSide();
+	if (turnSide >= 0)
+	{
+		irr::core::position2di size = mainGame->Resize(69, 69);
+		irr::core::position2di pos = (turnSide == 0) ? p1pos : p2pos;
+		if (turnSide == 1)
+			pos.X -= size.X;
+		botTheater.DrawTurnHighlight(pos.X, pos.Y, pos.X + size.X, pos.Y + size.Y);
+	}
 }
 void Game::DrawRanks()
 {
