@@ -333,7 +333,7 @@ void BotTheater::ShowWindowAfterRoom() const {
 
 void BotTheater::SystemMessage(const wchar_t* msg) const {
 	mainGame->gMutex.lock();
-	mainGame->AddChatMsg(msg, 9);
+	mainGame->AddChatMsg(msg, 8);	// shown as [System], not as a script error
 	mainGame->gMutex.unlock();
 }
 
