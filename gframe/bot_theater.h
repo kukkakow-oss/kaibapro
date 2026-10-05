@@ -17,6 +17,7 @@ public:
 	// Settings from bot_theater.conf
 	bool enabled = true;
 	bool skip_host_window = false;
+	bool reveal_hands = true;
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -45,6 +46,7 @@ public:
 	void OnTypeChange(unsigned char selftype);
 	void OnReadyChanged(bool all_ready, bool is_host);
 	bool SkipPhaseBanner() const;
+	bool RevealHands() const { return active && reveal_hands; }
 	void ShowWindowAfterRoom() const;
 
 private:

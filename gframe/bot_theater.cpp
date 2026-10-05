@@ -65,6 +65,7 @@ void BotTheater::Load() {
 		std::string value = Trim(text.substr(eq + 1));
 		if(key == "enabled") enabled = ToInt(value, 1) != 0;
 		else if(key == "skip_host_window") skip_host_window = ToInt(value, 0) != 0;
+		else if(key == "reveal_hands") reveal_hands = ToInt(value, 1) != 0;
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -93,6 +94,8 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "enabled = %d\n\n", enabled ? 1 : 0);
 	std::fprintf(fp, "# 1 = skip the host window and host straight away with the saved settings\n");
 	std::fprintf(fp, "skip_host_window = %d\n\n", skip_host_window ? 1 : 0);
+	std::fprintf(fp, "# 1 = show both players' hands to you while spectating a bot room\n");
+	std::fprintf(fp, "reveal_hands = %d\n\n", reveal_hands ? 1 : 0);
 	std::fprintf(fp, "# How the bot script is started, and any extra options for it\n");
 	std::fprintf(fp, "# (for example: script_args = --bot-deck Test)\n");
 	std::fprintf(fp, "python = %s\n", ToUTF8(python).c_str());
