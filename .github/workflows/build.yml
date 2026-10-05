@@ -23,9 +23,16 @@ jobs:
     - name: Switch to Kaiba's rules engine
       run: |
         cd ocgcore
-        git fetch --depth=1 https://github.com/Kaiba-Corporation/kaibapro-core.git HEAD
+        # Pinned to the exact engine version Bot Theater's engine changes were made against.
+        git fetch --depth=1 https://github.com/Kaiba-Corporation/kaibapro-core.git d57ca355d1be3773a5c224e0f7072040691f613c
         git checkout -f FETCH_HEAD
         cd ..
+
+    - name: Apply Bot Theater's rules engine changes
+      run: |
+        # Modified engine files (split-zone tag rule) kept in the bot_theater_core folder.
+        Copy-Item -Path bot_theater_core\* -Destination ocgcore -Force
+        Get-ChildItem bot_theater_core | ForEach-Object { Write-Output "Replaced ocgcore\$($_.Name)" }
 
     - name: Show which rules engine version is used
       run: |
