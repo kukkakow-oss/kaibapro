@@ -1,8 +1,8 @@
-# Builds YGOPro.exe for Windows on GitHub's computers.
-# Two copies are built, one with each rules engine, so they can be compared.
+# Builds the modified YGOPro.exe (Bot Theater) for Windows on GitHub's computers,
+# using Kaiba Corporation's rules engine (kaibapro-core).
 # Built without sound for now (see the note further down).
 # Runs automatically after every change, or by hand from the Actions tab.
-name: Build Windows test copy
+name: Build Bot Theater
 
 on:
   push:
@@ -11,13 +11,6 @@ on:
 
 jobs:
   build-windows:
-    strategy:
-      fail-fast: false
-      matrix:
-        # "recorded" = the engine version this source code points to
-        # "kaiba"    = Kaiba Corporation's own engine (kaibapro-core)
-        engine: [recorded, kaiba]
-
     runs-on: windows-2022
 
     steps:
@@ -28,7 +21,6 @@ jobs:
         submodules: true
 
     - name: Switch to Kaiba's rules engine
-      if: matrix.engine == 'kaiba'
       run: |
         cd ocgcore
         git fetch --depth=1 https://github.com/Kaiba-Corporation/kaibapro-core.git HEAD
@@ -192,6 +184,6 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: YGOPro-${{ matrix.engine }}-engine
+        name: YGOPro-BotTheater
         path: |
           bin/release/YGOPro.exe
