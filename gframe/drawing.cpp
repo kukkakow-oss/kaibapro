@@ -123,9 +123,11 @@ void Game::DrawBackGround() {
 			}
 		}
 	}
-	matManager.mTexture.setTexture(0, drawField ? imageManager.tFieldTransparent[rule] : imageManager.tField[rule]);
-	driver->setMaterial(matManager.mTexture);
-	driver->drawVertexPrimitiveList(matManager.vField, 4, matManager.iRectangle, 2);
+	if(!botTheater.HideFieldOverlay()) {	// Bot Theater: custom backgrounds don't have TDOANE's built-in board
+		matManager.mTexture.setTexture(0, drawField ? imageManager.tFieldTransparent[rule] : imageManager.tField[rule]);
+		driver->setMaterial(matManager.mTexture);
+		driver->drawVertexPrimitiveList(matManager.vField, 4, matManager.iRectangle, 2);
+	}
 	driver->setMaterial(matManager.mBackLine);
 	//select field
 	if(dInfo.curMsg == MSG_SELECT_PLACE || dInfo.curMsg == MSG_SELECT_DISFIELD || dInfo.curMsg == MSG_HINT) {

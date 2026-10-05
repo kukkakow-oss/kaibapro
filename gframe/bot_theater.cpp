@@ -90,6 +90,7 @@ void BotTheater::Load() {
 		else if(key == "top_hand_raise") top_hand_raise = std::strtod(value.c_str(), nullptr);
 		else if(key == "split_zones") split_zones = ToInt(value, 0) != 0;
 		else if(key == "random_backgrounds") random_backgrounds = ToInt(value, 1) != 0;
+		else if(key == "custom_background_field") custom_background_field = ToInt(value, 0) != 0;
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -148,7 +149,11 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "# 1 = each duel's background is picked at random from the images in\n");
 	std::fprintf(fp, "# textures/backgrounds (.jpg, .jpeg, .png or .bmp). If that folder is empty or\n");
 	std::fprintf(fp, "# missing, the usual textures/bg.jpg is used.\n");
-	std::fprintf(fp, "random_backgrounds = %d\n\n", random_backgrounds ? 1 : 0);
+	std::fprintf(fp, "random_backgrounds = %d\n", random_backgrounds ? 1 : 0);
+	std::fprintf(fp, "# TDOANE's normal background has the board built in, and field2/field3.png only\n");
+	std::fprintf(fp, "# add the Extra Monster Zones on top. 0 = leave those out over custom backgrounds,\n");
+	std::fprintf(fp, "# 1 = draw them anyway\n");
+	std::fprintf(fp, "custom_background_field = %d\n\n", custom_background_field ? 1 : 0);
 	std::fprintf(fp, "# How far to raise the top player's hand, in card heights, so holograms\n");
 	std::fprintf(fp, "# don't cover it while spectating. 0 = normal position\n");
 	std::fprintf(fp, "top_hand_raise = %.2f\n\n", top_hand_raise);
@@ -728,6 +733,11 @@ irr::video::ITexture* BotTheater::DuelBackground() {
 		tDuelBackground = chosen;
 	}
 	return tDuelBackground ? tDuelBackground : imageManager.tBackGround;
+}
+
+bool BotTheater::HideFieldOverlay() const {
+	// tDuelBackground is only set while one of the custom backgrounds is in use.
+	return !custom_background_field && random_backgrounds && tDuelBackground && SpectatingBotRoom();
 }
 
 void BotTheater::ShowWindowAfterRoom() const {

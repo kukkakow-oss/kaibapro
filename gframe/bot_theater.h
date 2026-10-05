@@ -38,6 +38,7 @@ public:
 	double top_hand_raise = 1.0;		// card heights to raise the top player's hand by
 	bool split_zones = false;			// tag duels: each teammate has their own section of the field
 	bool random_backgrounds = true;		// pick each duel's background from textures/backgrounds
+	bool custom_background_field = false;	// still draw the field overlay (field2/field3.png) over custom backgrounds
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -78,6 +79,7 @@ public:
 	int TurnSide() const;	// side whose turn it is: 0 = bottom, 1 = top, -1 = none
 	void DrawHolograms();
 	irr::video::ITexture* DuelBackground();	// background for the current duel (drawing code only)
+	bool HideFieldOverlay() const;			// a custom background is showing, so skip field2/field3.png
 	float TopHandShift() const;		// how far back the top hand moves on the board
 	void MapTopHandPoint(int& x, int& y) const;	// mouse position -> where the hand would normally be
 	void DrawTurnHighlight(int left, int top, int right, int bottom) const;
