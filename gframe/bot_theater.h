@@ -37,6 +37,7 @@ public:
 	int hologram_backrow_size = 65;	// percent of the monster hologram size
 	double top_hand_raise = 1.0;		// card heights to raise the top player's hand by
 	bool split_zones = false;			// tag duels: each teammate has their own section of the field
+	bool random_backgrounds = true;		// pick each duel's background from textures/backgrounds
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -76,6 +77,7 @@ public:
 	void DrawInfoBorder() const;
 	int TurnSide() const;	// side whose turn it is: 0 = bottom, 1 = top, -1 = none
 	void DrawHolograms();
+	irr::video::ITexture* DuelBackground();	// background for the current duel (drawing code only)
 	float TopHandShift() const;		// how far back the top hand moves on the board
 	void MapTopHandPoint(int& x, int& y) const;	// mouse position -> where the hand would normally be
 	void DrawTurnHighlight(int left, int top, int right, int bottom) const;
@@ -103,6 +105,11 @@ private:
 	};
 	std::vector<Hologram> holograms;
 	irr::gui::IGUICheckBox* chkSplitZones = nullptr;	// added to the host window
+	std::wstring pending_background;	// chosen at duel start, loaded by the drawing code
+	std::wstring last_background;
+	bool background_pending = false;
+	irr::video::ITexture* tDuelBackground = nullptr;
+	void PickBackground();
 	irr::video::ITexture* tWhite = nullptr;
 	irr::video::ITexture* tGlow = nullptr;
 	bool SpectatingBotRoom() const;

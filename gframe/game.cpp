@@ -1,5 +1,6 @@
 #include "config.h"
 #include "game.h"
+#include "bot_theater.h"
 #include "myfilesystem.h"
 #include "image_manager.h"
 #include "data_manager.h"
@@ -1066,7 +1067,7 @@ void Game::MainLoop() {
 				soundManager.PlayBGM(BGM_ADVANTAGE);
 			else
 				soundManager.PlayBGM(BGM_DUEL);
-			DrawBackImage(imageManager.tBackGround);
+			DrawBackImage(botTheater.DuelBackground());	// Bot Theater: may be a randomly picked background
 			DrawBackGround();
 			DrawCards();
 			DrawMisc();

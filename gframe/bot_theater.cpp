@@ -8,6 +8,10 @@
 #include "client_card.h"
 #include <cmath>
 #include <algorithm>
+#include <ctime>
+#include <cwctype>
+#include <random>
+#include "myfilesystem.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -85,6 +89,7 @@ void BotTheater::Load() {
 		else if(key == "hologram_backrow_size") hologram_backrow_size = ToInt(value, hologram_backrow_size);
 		else if(key == "top_hand_raise") top_hand_raise = std::strtod(value.c_str(), nullptr);
 		else if(key == "split_zones") split_zones = ToInt(value, 0) != 0;
+		else if(key == "random_backgrounds") random_backgrounds = ToInt(value, 1) != 0;
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -140,6 +145,10 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "hologram_rest_opacity = %d\n", hologram_rest_opacity);
 	std::fprintf(fp, "hologram_backrow = %d\n", hologram_backrow ? 1 : 0);
 	std::fprintf(fp, "hologram_backrow_size = %d\n\n", hologram_backrow_size);
+	std::fprintf(fp, "# 1 = each duel's background is picked at random from the images in\n");
+	std::fprintf(fp, "# textures/backgrounds (.jpg, .jpeg, .png or .bmp). If that folder is empty or\n");
+	std::fprintf(fp, "# missing, the usual textures/bg.jpg is used.\n");
+	std::fprintf(fp, "random_backgrounds = %d\n\n", random_backgrounds ? 1 : 0);
 	std::fprintf(fp, "# How far to raise the top player's hand, in card heights, so holograms\n");
 	std::fprintf(fp, "# don't cover it while spectating. 0 = normal position\n");
 	std::fprintf(fp, "top_hand_raise = %.2f\n\n", top_hand_raise);
@@ -385,6 +394,8 @@ void BotTheater::OnDuelStart() {
 	holograms.clear();
 	if(!active)
 		return;
+	if(random_backgrounds)
+		PickBackground();
 	int seats = mainGame->dInfo.isTag ? 4 : 2;
 	for(int i = 0; i < seats; ++i) {
 		std::wstring path = FindAvatar(mainGame->stHostPrepDuelist[i]->getToolTipText().c_str());
@@ -667,6 +678,56 @@ void BotTheater::MapTopHandPoint(int& x, int& y) const {
 	float shrink = d1 / d0;	// the raised hand is further away, so it looks smaller
 	x = (int)(axis_x + (x - axis_x) * shrink);
 	y = (int)(screen_y(d0, h0) + (y - screen_y(d1, h1)) * shrink);
+}
+
+// ---------------------------------------------------------------------------
+// Random duel backgrounds from textures/backgrounds.
+
+void BotTheater::PickBackground() {
+	// Called at duel start (network thread): just choose a file; the drawing code loads it.
+	static const wchar_t* folder = L"./textures/backgrounds";
+	static std::mt19937 rng((unsigned int)std::time(nullptr));
+	std::vector<std::wstring> files;
+	FileSystem::TraversalDir(folder, [&files](const wchar_t* name, bool isdir) {
+		if(isdir)
+			return;
+		std::wstring lower(name);
+		for(auto& ch : lower)
+			ch = (wchar_t)std::towlower(ch);
+		static const wchar_t* exts[] = { L".jpg", L".jpeg", L".png", L".bmp" };
+		for(auto ext : exts) {
+			size_t n = std::wcslen(ext);
+			if(lower.size() > n && lower.compare(lower.size() - n, n, ext) == 0) {
+				files.push_back(std::wstring(folder) + L"/" + name);
+				break;
+			}
+		}
+	});
+	if(files.empty()) {
+		pending_background.clear();	// use the normal background
+	} else {
+		size_t pick = rng() % files.size();
+		if(files.size() > 1 && files[pick] == last_background)	// avoid the same one twice in a row
+			pick = (pick + 1 + rng() % (files.size() - 1)) % files.size();
+		pending_background = files[pick];
+		last_background = files[pick];
+	}
+	background_pending = true;
+}
+
+irr::video::ITexture* BotTheater::DuelBackground() {
+	if(!random_backgrounds || !SpectatingBotRoom())
+		return imageManager.tBackGround;
+	if(background_pending) {
+		background_pending = false;
+		irr::video::ITexture* chosen = nullptr;
+		if(!pending_background.empty())
+			chosen = mainGame->driver->getTexture(pending_background.c_str());
+		if(tDuelBackground && tDuelBackground != chosen)
+			mainGame->driver->removeTexture(tDuelBackground);	// free the previous one
+		tDuelBackground = chosen;
+	}
+	return tDuelBackground ? tDuelBackground : imageManager.tBackGround;
 }
 
 void BotTheater::ShowWindowAfterRoom() const {
