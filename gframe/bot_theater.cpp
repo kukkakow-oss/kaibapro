@@ -5,6 +5,7 @@
 #include "network.h"
 #include "image_manager.h"
 #include "materials.h"
+#include "client_card.h"
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
@@ -80,6 +81,9 @@ void BotTheater::Load() {
 		else if(key == "hologram_stay") hologram_stay = ToInt(value, 1) != 0;
 		else if(key == "hologram_rest_size") hologram_rest_size = ToInt(value, hologram_rest_size);
 		else if(key == "hologram_rest_opacity") hologram_rest_opacity = ToInt(value, hologram_rest_opacity);
+		else if(key == "hologram_backrow") hologram_backrow = ToInt(value, 1) != 0;
+		else if(key == "hologram_backrow_size") hologram_backrow_size = ToInt(value, hologram_backrow_size);
+		else if(key == "top_hand_raise") top_hand_raise = std::strtod(value.c_str(), nullptr);
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -118,19 +122,26 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "save_replays = %d\n\n", save_replays ? 1 : 0);
 	std::fprintf(fp, "# 1 = gold frame around the avatar of the player whose turn it is\n");
 	std::fprintf(fp, "turn_highlight = %d\n\n", turn_highlight ? 1 : 0);
-	std::fprintf(fp, "# Holograms of summoned monsters' art. 1 = on, 0 = off\n");
+	std::fprintf(fp, "# Holograms of face-up cards' art. 1 = on, 0 = off\n");
 	std::fprintf(fp, "# hologram_size and hologram_opacity are percentages (100 = normal).\n");
 	std::fprintf(fp, "# hologram_seconds is how long it shows at full size after the summon.\n");
 	std::fprintf(fp, "# hologram_stay: 1 = afterwards it stays, at the rest size/opacity (percent\n");
 	std::fprintf(fp, "# of full), until the card leaves its zone; 0 = it fades out instead.\n");
 	std::fprintf(fp, "# Either way it fades out early if the card leaves the field.\n");
+	std::fprintf(fp, "# hologram_backrow: 1 = Spell/Trap and Pendulum zones get holograms too,\n");
+	std::fprintf(fp, "# floating lower, at hologram_backrow_size percent of the monster size.\n");
 	std::fprintf(fp, "holograms = %d\n", holograms_on ? 1 : 0);
 	std::fprintf(fp, "hologram_size = %d\n", hologram_size);
 	std::fprintf(fp, "hologram_seconds = %.2f\n", hologram_seconds);
 	std::fprintf(fp, "hologram_opacity = %d\n", hologram_opacity);
 	std::fprintf(fp, "hologram_stay = %d\n", hologram_stay ? 1 : 0);
 	std::fprintf(fp, "hologram_rest_size = %d\n", hologram_rest_size);
-	std::fprintf(fp, "hologram_rest_opacity = %d\n\n", hologram_rest_opacity);
+	std::fprintf(fp, "hologram_rest_opacity = %d\n", hologram_rest_opacity);
+	std::fprintf(fp, "hologram_backrow = %d\n", hologram_backrow ? 1 : 0);
+	std::fprintf(fp, "hologram_backrow_size = %d\n\n", hologram_backrow_size);
+	std::fprintf(fp, "# How far to raise the top player's hand, in card heights, so holograms\n");
+	std::fprintf(fp, "# don't cover it while spectating. 0 = normal position\n");
+	std::fprintf(fp, "top_hand_raise = %.2f\n\n", top_hand_raise);
 	std::fprintf(fp, "# Avatars: put images in textures/avatars named after the bots, e.g.\n");
 	std::fprintf(fp, "# textures/avatars/Lady Luck.png (.png, .jpg or .jpeg). Characters that\n");
 	std::fprintf(fp, "# Windows doesn't allow in file names (\\ / : * ? \" < > |) become _ instead.\n\n");
@@ -370,21 +381,10 @@ void BotTheater::OnDuelStart() {
 }
 
 // ---------------------------------------------------------------------------
-// Holograms: the summoned monster's art rises out of its zone, hovers with a
-// cyan glow, then fades.
-
-void BotTheater::OnSummon(unsigned int code, int local_player, unsigned int location, int sequence, unsigned int position) {
-	const unsigned int MONSTER_ZONE = 0x04, FACE_DOWN = 0x0a;
-	if(!code || !holograms_on || !SpectatingBotRoom())
-		return;
-	if(!(location & MONSTER_ZONE) || (position & FACE_DOWN) || sequence < 0 || sequence > 6
-		|| local_player < 0 || local_player > 1)
-		return;
-	mainGame->gMutex.lock();
-	if(holograms.size() < 16)
-		holograms.push_back(Hologram{ code, local_player, sequence, 0, nullptr, -1 });
-	mainGame->gMutex.unlock();
-}
+// Holograms: when a card turns up face-up in a Monster, Spell & Trap or Pendulum
+// zone, its art rises out of the zone with a cyan glow. It then either rests
+// (smaller and dimmer) or fades, and it fades out once the card leaves.
+// Spell/Trap/Pendulum ("back row") holograms are smaller and float lower.
 
 void BotTheater::MakeHologramTextures() {
 	auto driver = mainGame->driver;
@@ -426,14 +426,44 @@ static void DrawQuad(irr::video::IVideoDriver* driver, const irr::core::vector3d
 	driver->drawVertexPrimitiveList(v, 4, idx, 2);
 }
 
+void BotTheater::ScanForNewHolograms() {
+	// Give every face-up card in a monster or back-row zone a hologram when it first
+	// appears there. This covers summons, activations, Pendulum Scales, cards placed
+	// face-up by effects, and cards flipped face-up.
+	const unsigned char FACE_UP = 0x05;
+	auto has_hologram = [this](ClientCard* c) {
+		for(auto& h : holograms)
+			if(h.card == c && h.leave_frame < 0)
+				return true;
+		return false;
+	};
+	for(int side = 0; side < 2; ++side) {
+		for(int row = 0; row < 2; ++row) {
+			bool backrow = (row == 1);
+			if(backrow && !hologram_backrow)
+				continue;
+			auto& zones = backrow ? mainGame->dField.szone[side] : mainGame->dField.mzone[side];
+			int count = std::min((int)zones.size(), backrow ? 8 : 7);
+			for(int s = 0; s < count; ++s) {
+				if(backrow && s == 5)
+					continue;	// Field Zone: the field spell already shows as the background
+				ClientCard* c = zones[s];
+				if(c && c->code && (c->position & FACE_UP) && !has_hologram(c) && holograms.size() < 32)
+					holograms.push_back(Hologram{ c->code, side, s, backrow, 0, c, -1 });
+			}
+		}
+	}
+}
+
 void BotTheater::DrawHolograms() {
 	// Called every frame from the field drawing, with the game's GUI lock held.
-	if(holograms.empty())
-		return;
-	if(!SpectatingBotRoom() || !mainGame->dInfo.isStarted) {
+	if(!holograms_on || !SpectatingBotRoom() || !mainGame->dInfo.isStarted) {
 		holograms.clear();
 		return;
 	}
+	ScanForNewHolograms();
+	if(holograms.empty())
+		return;
 	MakeHologramTextures();
 	auto driver = mainGame->driver;
 	driver->setTransform(irr::video::ETS_WORLD, irr::core::IdentityMatrix);
@@ -456,43 +486,42 @@ void BotTheater::DrawHolograms() {
 	irr::core::vector3df right(1, 0, 0);
 
 	const int rise = 18, fade = 18, settle = 20;	// frames (the game runs at 60 a second)
+	const unsigned char FACE_UP = 0x05;
 	int full = std::max(rise, (int)(hologram_seconds * 60));
 	float size_scale = std::max(10, hologram_size) / 100.0f;
+	float backrow_scale = std::max(10, hologram_backrow_size) / 100.0f;
 	float opacity = std::min(100, std::max(5, hologram_opacity)) / 100.0f;
 	float rest_scale = std::max(10, hologram_rest_size) / 100.0f;
 	float rest_alpha = std::min(100, std::max(0, hologram_rest_opacity)) / 100.0f;
-	auto& mzone = mainGame->dField.mzone;
-	const unsigned char FACE_UP = 0x05;
+	int rule = (mainGame->dInfo.duel_rule >= 4) ? 1 : 0;
 
 	for(size_t i = 0; i < holograms.size();) {
 		Hologram& h = holograms[i];
+		auto& field = mainGame->dField;
 
-		// Follow the card: start the fade-out once it has left its zone (or turned face-down).
+		// Follow the card: start the fade-out once it leaves its zone or turns face-down.
 		if(h.leave_frame < 0) {
-			ClientCard* here = (h.sequence < (int)mzone[h.side].size()) ? mzone[h.side][h.sequence] : nullptr;
-			if(!h.card) {
-				if(here && here->code == h.code)
-					h.card = here;	// the summoned card has arrived in its zone
-				else if(h.frame > 60)
-					h.leave_frame = 0;	// it never arrived (for example, the summon was negated)
-			} else if(here != h.card) {
-				ClientCard* other = (h.sequence < (int)mzone[1 - h.side].size()) ? mzone[1 - h.side][h.sequence] : nullptr;
-				if(other == h.card)
+			auto& zones = h.backrow ? field.szone[h.side] : field.mzone[h.side];
+			auto& other_side = h.backrow ? field.szone[1 - h.side] : field.mzone[1 - h.side];
+			ClientCard* here = (h.sequence < (int)zones.size()) ? zones[h.sequence] : nullptr;
+			if(here != h.card) {
+				ClientCard* there = (h.sequence < (int)other_side.size()) ? other_side[h.sequence] : nullptr;
+				if(there == h.card)
 					h.side = 1 - h.side;	// the spectator swapped sides
 				else
-					h.leave_frame = 0;	// destroyed, banished, bounced, moved...
+					h.leave_frame = 0;	// destroyed, banished, bounced, sent to the Graveyard, moved...
 			}
-			if(h.card && h.leave_frame < 0 && !(h.card->position & FACE_UP))
-				h.leave_frame = 0;	// flipped face-down
+			if(h.leave_frame < 0 && (h.card->code != h.code || !(h.card->position & FACE_UP)))
+				h.leave_frame = 0;	// flipped face-down, or became a different card (which gets its own hologram)
+		}
+		if(h.leave_frame >= fade) {
+			holograms.erase(holograms.begin() + i);
+			continue;
 		}
 
-		const auto& zone = matManager.vFieldMzone[h.side][h.sequence];
-		irr::core::vector3df center = (zone[0].Pos + zone[1].Pos + zone[2].Pos + zone[3].Pos) / 4.0f;
-
 		// Animation: rise and grow, hover at full size, then either settle down to the
-		// resting size/opacity or fade out; fade out early if the card leaves.
+		// resting size/opacity or fade away; fade out early if the card leaves.
 		float alpha, scale, lift;
-		bool done = false;
 		if(h.frame < rise) {
 			float p = (h.frame + 1) / (float)rise;
 			p = 1 - (1 - p) * (1 - p);
@@ -509,25 +538,34 @@ void BotTheater::DrawHolograms() {
 			scale = 1 + (rest_scale - 1) * k;
 			lift = 0.5f - 0.1f * k;
 		} else {
-			float q = 1 - (h.frame - full) / (float)fade;
+			float q = std::max(0.0f, 1 - (h.frame - full) / (float)fade);
 			alpha = q;
 			scale = 1.0f + 0.08f * (1 - q);
 			lift = 0.5f + 0.15f * (1 - q);
-			done = q <= 0;
 		}
 		if(h.leave_frame >= 0) {
 			float q = 1 - h.leave_frame / (float)fade;
 			alpha *= q;
 			scale *= 1.0f + 0.08f * (1 - q);
 			lift += 0.15f * (1 - q);
-			done = done || q <= 0;
 		}
 		lift += 0.04f * std::sin(h.frame * 0.1f);
 		alpha *= opacity;
-		if(done || alpha <= 0) {
-			holograms.erase(holograms.begin() + i);
-			continue;
+		if(h.backrow) {
+			scale *= backrow_scale;
+			lift *= 0.5f;	// back-row holograms float lower, so they cover less of the monster row
 		}
+		if(h.frame < 1000000)
+			++h.frame;
+		if(h.leave_frame >= 0)
+			++h.leave_frame;
+		++i;
+		if(alpha <= 0.002f)
+			continue;	// faded away, but still following the card so it doesn't reappear
+
+		const irr::video::S3DVertex* zone = h.backrow ? matManager.vFieldSzone[h.side][h.sequence][rule]
+			: matManager.vFieldMzone[h.side][h.sequence];
+		irr::core::vector3df center = (zone[0].Pos + zone[1].Pos + zone[2].Pos + zone[3].Pos) / 4.0f;
 
 		// Crop to the art box (measured from standard card images); Pendulums stop above their text box.
 		bool pendulum = false;
@@ -549,7 +587,7 @@ void BotTheater::DrawHolograms() {
 		// Projector beam from the card to the bottom of the art.
 		mat.setTexture(0, tWhite);
 		driver->setMaterial(mat);
-		irr::core::vector3df floorHalf = right * 0.3f;
+		irr::core::vector3df floorHalf = right * (h.backrow ? 0.22f : 0.3f);
 		irr::core::vector3df floor = center + irr::core::vector3df(0, 0, 0.02f);
 		DrawQuad(driver, bl, br, floor - floorHalf, floor + floorHalf, cyanTop, cyanBottom);
 
@@ -579,13 +617,44 @@ void BotTheater::DrawHolograms() {
 		DrawQuad(driver, bl + ty, br + ty, bl, br, edge, edge);			// bottom
 		DrawQuad(driver, tl, tl + tx, bl, bl + tx, edge, edge);			// left
 		DrawQuad(driver, tr - tx, tr, br - tx, br, edge, edge);			// right
-
-		if(h.frame < 1000000)
-			++h.frame;
-		if(h.leave_frame >= 0)
-			++h.leave_frame;
-		++i;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Raising the top player's hand. The game places hand cards on the board, seen
+// through its fixed camera at (4.2, 8, 7.8) looking at (4.2, 0, 0). Moving the hand
+// further back by about 1.955 board units raises it on screen by one card height.
+
+static const float TOP_HAND_Y = -3.4f, HAND_Z = 0.5f;
+static const float SHIFT_PER_CARD_HEIGHT = 1.955f;
+
+// Distance from the camera, and how far above the camera's centre line, a point appears.
+static void CameraDepth(float y, float z, float& depth, float& height) {
+	const float fy = -0.71601f, fz = -0.69811f;	// viewing direction
+	const float uy = -0.69811f, uz = 0.71601f;	// camera's "up"
+	depth = (y - 8.0f) * fy + (z - 7.8f) * fz;
+	height = (y - 8.0f) * uy + (z - 7.8f) * uz;
+}
+
+float BotTheater::TopHandShift() const {
+	if(top_hand_raise <= 0 || !SpectatingBotRoom())
+		return 0;
+	return (float)std::min(5.0, top_hand_raise) * SHIFT_PER_CARD_HEIGHT;
+}
+
+void BotTheater::MapTopHandPoint(int& x, int& y) const {
+	float shift = TopHandShift();
+	if(shift <= 0)
+		return;
+	// Screen positions here are in the game's base 1024x640 layout.
+	float d0, h0, d1, h1;
+	CameraDepth(TOP_HAND_Y, HAND_Z, d0, h0);
+	CameraDepth(TOP_HAND_Y - shift, HAND_Z, d1, h1);
+	auto screen_y = [](float d, float h) { return (0.42f - h / d) / 0.84f * 640.0f; };
+	const float axis_x = 0.9f / 1.35f * 1024.0f;	// where the camera's centre line meets the screen
+	float shrink = d1 / d0;	// the raised hand is further away, so it looks smaller
+	x = (int)(axis_x + (x - axis_x) * shrink);
+	y = (int)(screen_y(d0, h0) + (y - screen_y(d1, h1)) * shrink);
 }
 
 void BotTheater::ShowWindowAfterRoom() const {

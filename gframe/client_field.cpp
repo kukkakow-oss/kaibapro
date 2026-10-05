@@ -6,6 +6,7 @@
 #include "image_manager.h"
 #include "game.h"
 #include "materials.h"
+#include "bot_theater.h"
 #include "../ocgcore/common.h"
 
 namespace ygo {
@@ -910,11 +911,12 @@ void ClientField::GetCardLocation(ClientCard* pcard, irr::core::vector3df* t, ir
 				t->X = 6.25f - (5.5f - 0.8f * count) / 2 - sequence * 0.8f;
 			else
 				t->X = 5.9f - sequence * 4.0f / (count - 1);
+			float raise = botTheater.TopHandShift();	// Bot Theater: may sit higher up, clear of holograms
 			if (pcard->is_hovered) {
-				t->Y = -3.56f;
+				t->Y = -3.56f - raise;
 				t->Z = 0.656f - 0.001f * sequence;
 			} else {
-				t->Y = -3.4f;
+				t->Y = -3.4f - raise;
 				t->Z = 0.5f - 0.001f * sequence;
 			}
 			if (pcard->code == 0) {

@@ -2885,10 +2885,9 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 		unsigned int code = BufferIO::ReadInt32(pbuf);
 		int cc = mainGame->LocalPlayer(BufferIO::ReadUInt8(pbuf));
 		botTheater.OnCardAction(code, cc);
-		unsigned int cl = BufferIO::ReadUInt8(pbuf);
-		int cs = BufferIO::ReadUInt8(pbuf);
-		unsigned int cp = BufferIO::ReadUInt8(pbuf);
-		botTheater.OnSummon(code, cc, cl, cs, cp);
+		/*int cl = */BufferIO::ReadUInt8(pbuf);
+		/*int cs = */BufferIO::ReadUInt8(pbuf);
+		/*int cp = */BufferIO::ReadUInt8(pbuf);
 		if(!mainGame->dInfo.isReplay || !mainGame->dInfo.isReplaySkiping) {
 			soundManager.PlaySoundEffect(SOUND_SUMMON);
 			myswprintf(event_string, dataManager.GetSysString(1603), dataManager.GetName(code));
@@ -2910,10 +2909,9 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 		unsigned int code = BufferIO::ReadInt32(pbuf);
 		int cc = mainGame->LocalPlayer(BufferIO::ReadUInt8(pbuf));
 		botTheater.OnCardAction(code, cc);
-		unsigned int cl = BufferIO::ReadUInt8(pbuf);
-		int cs = BufferIO::ReadUInt8(pbuf);
-		unsigned int cp = BufferIO::ReadUInt8(pbuf);
-		botTheater.OnSummon(code, cc, cl, cs, cp);
+		/*int cl = */BufferIO::ReadUInt8(pbuf);
+		/*int cs = */BufferIO::ReadUInt8(pbuf);
+		/*int cp = */BufferIO::ReadUInt8(pbuf);
 		if(!mainGame->dInfo.isReplay || !mainGame->dInfo.isReplaySkiping) {
 			CardData cd;
 			if(dataManager.GetData(code, &cd) && (cd.type & TYPE_TOKEN))
@@ -2944,7 +2942,6 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 		pcard->SetCode(code);
 		pcard->position = cp;
 		botTheater.OnCardAction(code, cc);
-		botTheater.OnSummon(code, cc, cl, cs, cp);
 		if(!mainGame->dInfo.isReplay || !mainGame->dInfo.isReplaySkiping) {
 			soundManager.PlaySoundEffect(SOUND_FILP);
 			myswprintf(event_string, dataManager.GetSysString(1607), dataManager.GetName(code));

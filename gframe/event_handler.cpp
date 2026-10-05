@@ -2082,6 +2082,8 @@ void ClientField::GetHoverField(int x, int y) {
 	irr::core::recti sfRect(430, 504, 875, 600);
 	irr::core::recti ofRect(531, 135, 800, 191);
 	irr::core::vector2di pos(x, y);
+	int hx = x, hy = y;	// Bot Theater: the top hand may be raised; map back to its usual spot
+	botTheater.MapTopHandPoint(hx, hy);
 	int rule = (mainGame->dInfo.duel_rule >= 4) ? 1 : 0;
 	if(sfRect.isPointInside(pos)) {
 		int hc = hand[0].size();
@@ -2110,7 +2112,7 @@ void ClientField::GetHoverField(int x, int y) {
 			else
 				hovered_sequence = (x - sfRect.UpperLeftCorner.X) * (hc - 1) / ((cardSize + cardSpace) * 5);
 		}
-	} else if(ofRect.isPointInside(pos)) {
+	} else if(ofRect.isPointInside(irr::core::vector2di(hx, hy))) {
 		int hc = hand[1].size();
 		int cardSize = 39;
 		int cardSpace = 7;
@@ -2118,12 +2120,12 @@ void ClientField::GetHoverField(int x, int y) {
 			hovered_location = 0;
 		else if(hc < 7) {
 			int left = ofRect.UpperLeftCorner.X + (cardSize + cardSpace) * (6 - hc) / 2;
-			if(x < left)
+			if(hx < left)
 				hovered_location = 0;
 			else {
-				int seq = (x - left) / (cardSize + cardSpace);
+				int seq = (hx - left) / (cardSize + cardSpace);
 				if(seq >= hc) seq = hc - 1;
-				if(x - left - (cardSize + cardSpace) * seq < cardSize) {
+				if(hx - left - (cardSize + cardSpace) * seq < cardSize) {
 					hovered_controler = 1;
 					hovered_location = LOCATION_HAND;
 					hovered_sequence = hc - 1 - seq;
@@ -2132,10 +2134,10 @@ void ClientField::GetHoverField(int x, int y) {
 		} else {
 			hovered_controler = 1;
 			hovered_location = LOCATION_HAND;
-			if(x >= ofRect.UpperLeftCorner.X + (cardSize + cardSpace) * 5)
+			if(hx >= ofRect.UpperLeftCorner.X + (cardSize + cardSpace) * 5)
 				hovered_sequence = 0;
 			else
-				hovered_sequence = hc - 1 - (x - ofRect.UpperLeftCorner.X) * (hc - 1) / ((cardSize + cardSpace) * 5);
+				hovered_sequence = hc - 1 - (hx - ofRect.UpperLeftCorner.X) * (hc - 1) / ((cardSize + cardSpace) * 5);
 		}
 	} else {
 		double screenx = x / 1024.0 * 1.35 - 0.90;

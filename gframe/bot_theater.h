@@ -33,6 +33,9 @@ public:
 	bool hologram_stay = true;		// stay (smaller and dimmer) until the card leaves its zone
 	int hologram_rest_size = 80;	// percent of full size while resting
 	int hologram_rest_opacity = 50;	// percent of full opacity while resting
+	bool hologram_backrow = true;		// Spell/Trap and Pendulum zones too
+	int hologram_backrow_size = 65;	// percent of the monster hologram size
+	double top_hand_raise = 1.0;		// card heights to raise the top player's hand by
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -70,8 +73,9 @@ public:
 	const wchar_t* TurnText() const;
 	void DrawInfoBorder() const;
 	int TurnSide() const;	// side whose turn it is: 0 = bottom, 1 = top, -1 = none
-	void OnSummon(unsigned int code, int local_player, unsigned int location, int sequence, unsigned int position);
 	void DrawHolograms();
+	float TopHandShift() const;		// how far back the top hand moves on the board
+	void MapTopHandPoint(int& x, int& y) const;	// mouse position -> where the hand would normally be
 	void DrawTurnHighlight(int left, int top, int right, int bottom) const;
 	void ShowWindowAfterRoom() const;
 
@@ -89,9 +93,10 @@ private:
 	struct Hologram {
 		unsigned int code;
 		int side;		// 0 = bottom player, 1 = top
-		int sequence;	// monster zone
+		int sequence;	// zone number
+		bool backrow;	// Spell/Trap or Pendulum zone (otherwise a Monster zone)
 		int frame;
-		ClientCard* card;	// the summoned card, once it's seen in its zone
+		ClientCard* card;	// the card the hologram belongs to
 		int leave_frame;	// -1 while the card is still there, then counts the fade-out
 	};
 	std::vector<Hologram> holograms;
@@ -99,6 +104,7 @@ private:
 	irr::video::ITexture* tGlow = nullptr;
 	bool SpectatingBotRoom() const;
 	void MakeHologramTextures();
+	void ScanForNewHolograms();
 
 	bool LaunchBots(std::wstring& error);
 	void SystemMessage(const wchar_t* msg) const;
