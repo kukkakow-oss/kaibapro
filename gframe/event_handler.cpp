@@ -12,6 +12,7 @@
 #include "single_mode.h"
 #include "materials.h"
 #include "../ocgcore/common.h"
+#include "bot_theater.h"
 
 namespace ygo {
 
@@ -1578,7 +1579,8 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					}
 					SetShowMark(mcard, true);
 					if(mcard->code) {
-						mainGame->ShowCardInfo(mcard->code);
+						if(!botTheater.InfoFollowsActions())	// Bot Theater: the window follows summons/activations instead
+							mainGame->ShowCardInfo(mcard->code);
 						if(mcard->location & 0xe) {
 							std::wstring str;
 							myswprintf(formatBuffer, L"%ls", dataManager.GetName(mcard->code));
@@ -1643,7 +1645,8 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 						}
 					} else {
 						should_show_tip = false;
-						mainGame->ClearCardInfo(mcard->controler);
+						if(!botTheater.InfoFollowsActions())
+							mainGame->ClearCardInfo(mcard->controler);
 					}
 				}
 				hovered_card = mcard;

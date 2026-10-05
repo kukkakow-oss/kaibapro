@@ -14,7 +14,8 @@ namespace ygo {
 		SLEEVE = 0,
 		AVATAR = 1,
 		RANK = 2,
-		BORDER = 3
+		BORDER = 3,
+		LOCAL_AVATAR = 4	// Bot Theater: avatar image from a local file
 	};
 	struct TextureData
 	{
@@ -24,6 +25,7 @@ namespace ygo {
 		char hostname[256];
 		char filename[256];
 		char fakename[32];
+		wchar_t localpath[256];
 	};
 
 class ImageManager {
@@ -36,6 +38,7 @@ public:
 
 	void LoadTexture(TextureType type, int textureId, int player, wchar_t* site, wchar_t* dir);
 	void LoadPendingTextures();
+	void LoadLocalAvatar(int player, const wchar_t* path);
 
 	irr::video::ITexture* GetTextureFromFile(const char* file, irr::s32 width, irr::s32 height);
 	irr::video::ITexture* GetTexture(int code, bool fit = false);

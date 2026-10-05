@@ -685,6 +685,7 @@ void DuelClient::HandleSTOCPacketLan(unsigned char* data, int len) {
 			mainGame->dInfo.tag_player[0] = false;
 			mainGame->dInfo.tag_player[1] = false;
 		}
+		botTheater.OnDuelStart();
 		mainGame->gMutex.unlock();
 		match_kill = 0;
 		break;
@@ -2517,6 +2518,7 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 			else
 				mainGame->dInfo.tag_player[1] = !mainGame->dInfo.tag_player[1];
 		}
+		botTheater.SetTurnPlayer(player);
 		if(!mainGame->dInfo.isReplay || !mainGame->dInfo.isReplaySkiping) {
 			soundManager.PlaySoundEffect(SOUND_NEXT_TURN);
 			mainGame->showcardcode = 10;
@@ -2869,7 +2871,8 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 	}
 	case MSG_SUMMONING: {
 		unsigned int code = BufferIO::ReadInt32(pbuf);
-		/*int cc = */mainGame->LocalPlayer(BufferIO::ReadUInt8(pbuf));
+		int cc = mainGame->LocalPlayer(BufferIO::ReadUInt8(pbuf));
+		botTheater.OnCardAction(code, cc);
 		/*int cl = */BufferIO::ReadUInt8(pbuf);
 		/*int cs = */BufferIO::ReadUInt8(pbuf);
 		/*int cp = */BufferIO::ReadUInt8(pbuf);
@@ -2892,7 +2895,8 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 	}
 	case MSG_SPSUMMONING: {
 		unsigned int code = BufferIO::ReadInt32(pbuf);
-		/*int cc = */mainGame->LocalPlayer(BufferIO::ReadUInt8(pbuf));
+		int cc = mainGame->LocalPlayer(BufferIO::ReadUInt8(pbuf));
+		botTheater.OnCardAction(code, cc);
 		/*int cl = */BufferIO::ReadUInt8(pbuf);
 		/*int cs = */BufferIO::ReadUInt8(pbuf);
 		/*int cp = */BufferIO::ReadUInt8(pbuf);
@@ -2925,6 +2929,7 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 		ClientCard* pcard = mainGame->dField.GetCard(cc, cl, cs);
 		pcard->SetCode(code);
 		pcard->position = cp;
+		botTheater.OnCardAction(code, cc);
 		if(!mainGame->dInfo.isReplay || !mainGame->dInfo.isReplaySkiping) {
 			soundManager.PlaySoundEffect(SOUND_FILP);
 			myswprintf(event_string, dataManager.GetSysString(1607), dataManager.GetName(code));
@@ -2957,6 +2962,7 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 		/*int ct = */BufferIO::ReadUInt8(pbuf);
 		if(mainGame->dInfo.isReplay && mainGame->dInfo.isReplaySkiping)
 			return true;
+		botTheater.OnCardAction(code, cc);
 		soundManager.PlaySoundEffect(SOUND_ACTIVATE);
 		ClientCard* pcard = mainGame->dField.GetCard(pcc, pcl, pcs, subs);
 		if(pcard->code != code) {

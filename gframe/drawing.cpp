@@ -6,6 +6,7 @@
 #include "sound_manager.h"
 #include "duelclient.h"
 #include "../ocgcore/common.h"
+#include "bot_theater.h"
 
 namespace ygo {
 
@@ -810,6 +811,7 @@ void Game::DrawGUI() {
 			fadingList.erase(fthis);
 	}
 	env->drawAll();
+	botTheater.DrawInfoBorder();
 }
 void Game::DrawSpec() {
 	irr::s32 midx = 574 + (CARD_IMG_WIDTH * 0.5);
@@ -941,7 +943,9 @@ void Game::DrawSpec() {
 				lstr = L"End Phase";
 				break;
 			case 10:
-				lstr = L"Next Players Turn";
+				lstr = botTheater.TurnText();	// Bot Theater: "<name>'s Turn"
+				if(!lstr)
+					lstr = L"Next Players Turn";
 				break;
 			case 11:
 				lstr = L"Duel Start";

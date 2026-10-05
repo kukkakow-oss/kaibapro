@@ -429,6 +429,15 @@ void ImageManager::LoadTexture(TextureType type, int textureId, int player, wcha
 	sprintf(sleeve->fakename, "dl%d%d.%s", type, player, ext);
 	pendingTextures.push_back(sleeve);
 }
+void ImageManager::LoadLocalAvatar(int player, const wchar_t* path)
+{
+	TextureData* avatar = new TextureData();
+	avatar->type = LOCAL_AVATAR;
+	avatar->player = player;
+	std::wcsncpy(avatar->localpath, path, 255);
+	avatar->localpath[255] = 0;
+	pendingTextures.push_back(avatar);
+}
 void ImageManager::LoadPendingTextures()
 {
 	while (!pendingTextures.empty())
@@ -452,6 +461,8 @@ irr::video::ITexture* ImageManager::ReadTexture(TextureData* textureData)
 		return GetRankTexture(textureData->textureId);
 	case BORDER:
 		return GetBorderTexture(textureData);
+	case LOCAL_AVATAR:
+		return driver->getTexture(textureData->localpath);
 	default:
 		return NULL;
 	}
@@ -507,6 +518,7 @@ void ImageManager::ApplyTexture(TextureData* textureData, irr::video::ITexture *
 			tCover[textureData->player] = texture;
 		break;
 	case AVATAR:
+	case LOCAL_AVATAR:
 		if (textureData->player >= 0 && textureData->player < 4)
 			tAvatar[textureData->player] = texture;
 		break;

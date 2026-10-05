@@ -3,6 +3,8 @@
 #include "game.h"
 #include "duelclient.h"
 #include "network.h"
+#include "image_manager.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -66,6 +68,7 @@ void BotTheater::Load() {
 		if(key == "enabled") enabled = ToInt(value, 1) != 0;
 		else if(key == "skip_host_window") skip_host_window = ToInt(value, 0) != 0;
 		else if(key == "reveal_hands") reveal_hands = ToInt(value, 1) != 0;
+		else if(key == "info_follows_actions") info_follows_actions = ToInt(value, 1) != 0;
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -96,6 +99,12 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "skip_host_window = %d\n\n", skip_host_window ? 1 : 0);
 	std::fprintf(fp, "# 1 = show both players' hands to you while spectating a bot room\n");
 	std::fprintf(fp, "reveal_hands = %d\n\n", reveal_hands ? 1 : 0);
+	std::fprintf(fp, "# 1 = the card window at the top left shows the last card summoned or\n");
+	std::fprintf(fp, "# activated (blue frame = bottom player, red = top) instead of the hovered card\n");
+	std::fprintf(fp, "info_follows_actions = %d\n\n", info_follows_actions ? 1 : 0);
+	std::fprintf(fp, "# Avatars: put images in textures/avatars named after the bots, e.g.\n");
+	std::fprintf(fp, "# textures/avatars/Lady Luck.png (.png, .jpg or .jpeg). Characters that\n");
+	std::fprintf(fp, "# Windows doesn't allow in file names (\\ / : * ? \" < > |) become _ instead.\n\n");
 	std::fprintf(fp, "# How the bot script is started, and any extra options for it\n");
 	std::fprintf(fp, "# (for example: script_args = --bot-deck Test)\n");
 	std::fprintf(fp, "python = %s\n", ToUTF8(python).c_str());
@@ -217,6 +226,93 @@ void BotTheater::OnReadyChanged(bool all_ready, bool is_host) {
 
 bool BotTheater::SkipPhaseBanner() const {
 	return enabled && mainGame->dInfo.player_type == NETPLAYER_TYPE_OBSERVER && !mainGame->dInfo.isReplay;
+}
+
+bool BotTheater::InfoFollowsActions() const {
+	return active && info_follows_actions
+		&& mainGame->dInfo.player_type == NETPLAYER_TYPE_OBSERVER && !mainGame->dInfo.isReplay;
+}
+
+void BotTheater::OnCardAction(unsigned int code, int local_player) {
+	if(!code || !InfoFollowsActions())
+		return;
+	mainGame->gMutex.lock();
+	mainGame->ShowCardInfo(code);
+	info_owner = local_player;
+	mainGame->gMutex.unlock();
+}
+
+void BotTheater::SetTurnPlayer(int local_player) {
+	const auto& d = mainGame->dInfo;
+	const wchar_t* name;
+	if(local_player == 0)
+		name = (d.isTag && d.tag_player[0]) ? d.hostname_tag : d.hostname;
+	else
+		name = (d.isTag && d.tag_player[1]) ? d.clientname_tag : d.clientname;
+	if(name && name[0])
+		myswprintf(turn_text, L"%ls's Turn", name);
+	else
+		turn_text[0] = 0;
+}
+
+const wchar_t* BotTheater::TurnText() const {
+	if(!active || !turn_text[0] || mainGame->gameConf.hide_player_name)
+		return nullptr;
+	return turn_text;
+}
+
+void BotTheater::DrawInfoBorder() const {
+	if(info_owner < 0 || !InfoFollowsActions() || !mainGame->dInfo.isStarted || !mainGame->wCardImg->isVisible())
+		return;
+	irr::video::SColor color = (info_owner == 0) ? irr::video::SColor(255, 40, 120, 255)
+		: irr::video::SColor(255, 230, 40, 40);
+	irr::core::recti r = mainGame->wCardImg->getAbsolutePosition();
+	int thickness = std::max(2, (int)(3 * mainGame->xScale));
+	for(int i = 0; i < thickness; ++i) {
+		irr::core::recti frame(r.UpperLeftCorner.X + i, r.UpperLeftCorner.Y + i,
+			r.LowerRightCorner.X - i, r.LowerRightCorner.Y - i);
+		mainGame->driver->draw2DRectangleOutline(frame, color);
+	}
+}
+
+static bool FileExists(const std::wstring& path) {
+#ifdef _WIN32
+	FILE* f = _wfopen(path.c_str(), L"rb");
+#else
+	FILE* f = std::fopen(ToUTF8(path).c_str(), "rb");
+#endif
+	if(!f)
+		return false;
+	std::fclose(f);
+	return true;
+}
+
+static std::wstring FindAvatar(const wchar_t* name) {
+	std::wstring safe;
+	for(const wchar_t* p = name; *p; ++p)
+		safe += std::wcschr(L"\\/:*?\"<>|", *p) ? L'_' : *p;
+	if(safe.empty())
+		return L"";
+	static const wchar_t* exts[] = { L".png", L".jpg", L".jpeg" };
+	for(auto ext : exts) {
+		std::wstring path = L"textures/avatars/" + safe + ext;
+		if(FileExists(path))
+			return path;
+	}
+	return L"";
+}
+
+void BotTheater::OnDuelStart() {
+	// Called when a duel starts, with the game's GUI lock already held.
+	info_owner = -1;
+	turn_text[0] = 0;
+	if(!active)
+		return;
+	int seats = mainGame->dInfo.isTag ? 4 : 2;
+	for(int i = 0; i < seats; ++i) {
+		std::wstring path = FindAvatar(mainGame->stHostPrepDuelist[i]->getToolTipText().c_str());
+		imageManager.LoadLocalAvatar(i, path.empty() ? L"textures/avatar.png" : path.c_str());
+	}
 }
 
 void BotTheater::ShowWindowAfterRoom() const {

@@ -18,6 +18,7 @@ public:
 	bool enabled = true;
 	bool skip_host_window = false;
 	bool reveal_hands = true;
+	bool info_follows_actions = true;
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -47,6 +48,12 @@ public:
 	void OnReadyChanged(bool all_ready, bool is_host);
 	bool SkipPhaseBanner() const;
 	bool RevealHands() const { return active && reveal_hands; }
+	bool InfoFollowsActions() const;
+	void OnCardAction(unsigned int code, int local_player);
+	void OnDuelStart();
+	void SetTurnPlayer(int local_player);
+	const wchar_t* TurnText() const;
+	void DrawInfoBorder() const;
 	void ShowWindowAfterRoom() const;
 
 private:
@@ -56,6 +63,8 @@ private:
 	unsigned short room_port = 0;
 	bool room_is_tag = false;
 	std::wstring room_password;
+	int info_owner = -1;	// whose action the info window shows: 0 = bottom player, 1 = top
+	wchar_t turn_text[64] = {};
 
 	bool LaunchBots(std::wstring& error);
 	void SystemMessage(const wchar_t* msg) const;
