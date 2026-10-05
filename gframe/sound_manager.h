@@ -9,6 +9,10 @@
 
 namespace ygo {
 
+#ifdef YGOPRO_USE_MINIAUDIO
+struct MiniaudioState;	// sound engine state, kept inside sound_manager.cpp
+#endif
+
 class SoundManager {
 private:
 	std::vector<std::wstring> BGMList[8];
@@ -18,6 +22,10 @@ private:
 	irrklang::ISoundEngine* engineSound;
 	irrklang::ISoundEngine* engineMusic;
 	irrklang::ISound* soundBGM;
+#endif
+#ifdef YGOPRO_USE_MINIAUDIO
+	MiniaudioState* ma{ nullptr };
+	void StopMusicSound();
 #endif
 	void RefershBGMDir(std::wstring path, int scene);
 

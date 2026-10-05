@@ -998,10 +998,10 @@ bool Game::Initialize() {
 	stCardListTip->setVisible(false);
 	device->setEventReceiver(&menuHandler);
 	if(!soundManager.Init()) {
-		chkEnableSound->setChecked(false);
+		// Leave the sound/music settings as they are, so a copy of the game without
+		// working sound doesn't switch sound off in the shared system.conf.
 		chkEnableSound->setEnabled(false);
 		chkEnableSound->setVisible(false);
-		chkEnableMusic->setChecked(false);
 		chkEnableMusic->setEnabled(false);
 		chkEnableMusic->setVisible(false);
 		scrSoundVolume->setVisible(false);

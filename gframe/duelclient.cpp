@@ -691,15 +691,22 @@ void DuelClient::HandleSTOCPacketLan(unsigned char* data, int len) {
 		break;
 	}
 	case STOC_DUEL_END: {
+		bool quiet_end = botTheater.SkipEndPrompts();
 		mainGame->gMutex.lock();
 		if(mainGame->dInfo.player_type < 7)
 			mainGame->btnLeaveGame->setVisible(false);
 		mainGame->CloseGameButtons();
-		mainGame->stMessage->setText(dataManager.GetSysString(1500));
-		mainGame->PopupElement(mainGame->wMessage);
+		if(!quiet_end) {
+			mainGame->stMessage->setText(dataManager.GetSysString(1500));
+			mainGame->PopupElement(mainGame->wMessage);
+		}
 		mainGame->gMutex.unlock();
-		mainGame->actionSignal.Reset();
-		mainGame->actionSignal.Wait();
+		if(quiet_end) {
+			mainGame->WaitFrameSignal(120);	// Bot Theater: linger on the final board for a moment, no OK needed
+		} else {
+			mainGame->actionSignal.Reset();
+			mainGame->actionSignal.Wait();
+		}
 		mainGame->closeDoneSignal.Reset();
 		mainGame->closeSignal.Set();
 		mainGame->closeDoneSignal.Wait();
@@ -749,7 +756,12 @@ void DuelClient::HandleSTOCPacketLan(unsigned char* data, int len) {
 		wchar_t timetext[40];
 		std::wcsftime(timetext, sizeof timetext / sizeof timetext[0], L"%Y-%m-%d %H-%M-%S", std::localtime(&starttime));
 		mainGame->ebRSName->setText(timetext);
-		if(!mainGame->chkAutoSaveReplay->isChecked()) {
+		bool quiet_replay = botTheater.SkipEndPrompts();
+		if(quiet_replay) {
+			// Bot Theater: no replay prompt. Keep only the latest replay, or every one if save_replays = 1.
+			mainGame->actionParam = botTheater.save_replays ? 1 : 0;
+			mainGame->gMutex.unlock();
+		} else if(!mainGame->chkAutoSaveReplay->isChecked()) {
 			mainGame->wReplaySave->setText(dataManager.GetSysString(1340));
 			mainGame->PopupElement(mainGame->wReplaySave);
 			mainGame->gMutex.unlock();
@@ -765,7 +777,7 @@ void DuelClient::HandleSTOCPacketLan(unsigned char* data, int len) {
 			mainGame->gMutex.unlock();
 			mainGame->WaitFrameSignal(30);
 		}
-		if(mainGame->actionParam || !is_host) {
+		if(mainGame->actionParam || !is_host || quiet_replay) {
 			prep += sizeof(ReplayHeader);
 			std::memcpy(new_replay.comp_data, prep, len - sizeof(ReplayHeader) - 1);
 			new_replay.comp_size = len - sizeof(ReplayHeader) - 1;

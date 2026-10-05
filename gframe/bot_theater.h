@@ -19,6 +19,7 @@ public:
 	bool skip_host_window = false;
 	bool reveal_hands = true;
 	bool info_follows_actions = true;
+	bool save_replays = false;
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -49,6 +50,7 @@ public:
 	bool SkipPhaseBanner() const;
 	bool RevealHands() const { return active && reveal_hands; }
 	bool InfoFollowsActions() const;
+	bool SkipEndPrompts() const;
 	void OnCardAction(unsigned int code, int local_player);
 	void OnDuelStart();
 	void SetTurnPlayer(int local_player);

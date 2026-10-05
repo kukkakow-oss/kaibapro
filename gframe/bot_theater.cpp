@@ -69,6 +69,7 @@ void BotTheater::Load() {
 		else if(key == "skip_host_window") skip_host_window = ToInt(value, 0) != 0;
 		else if(key == "reveal_hands") reveal_hands = ToInt(value, 1) != 0;
 		else if(key == "info_follows_actions") info_follows_actions = ToInt(value, 1) != 0;
+		else if(key == "save_replays") save_replays = ToInt(value, 0) != 0;
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -102,6 +103,9 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "# 1 = the card window at the top left shows the last card summoned or\n");
 	std::fprintf(fp, "# activated (blue frame = bottom player, red = top) instead of the hovered card\n");
 	std::fprintf(fp, "info_follows_actions = %d\n\n", info_follows_actions ? 1 : 0);
+	std::fprintf(fp, "# Replays of bot duels are saved without asking. 0 = keep only the latest\n");
+	std::fprintf(fp, "# (as _LastReplay), 1 = keep every one, named by date and time\n");
+	std::fprintf(fp, "save_replays = %d\n\n", save_replays ? 1 : 0);
 	std::fprintf(fp, "# Avatars: put images in textures/avatars named after the bots, e.g.\n");
 	std::fprintf(fp, "# textures/avatars/Lady Luck.png (.png, .jpg or .jpeg). Characters that\n");
 	std::fprintf(fp, "# Windows doesn't allow in file names (\\ / : * ? \" < > |) become _ instead.\n\n");
@@ -226,6 +230,10 @@ void BotTheater::OnReadyChanged(bool all_ready, bool is_host) {
 
 bool BotTheater::SkipPhaseBanner() const {
 	return enabled && mainGame->dInfo.player_type == NETPLAYER_TYPE_OBSERVER && !mainGame->dInfo.isReplay;
+}
+
+bool BotTheater::SkipEndPrompts() const {
+	return active && mainGame->dInfo.player_type == NETPLAYER_TYPE_OBSERVER && !mainGame->dInfo.isReplay;
 }
 
 bool BotTheater::InfoFollowsActions() const {
