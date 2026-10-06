@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace irr { namespace video { class ITexture; } namespace gui { class IGUICheckBox; } }
+namespace irr { namespace video { class ITexture; } namespace gui { class IGUICheckBox; class IGUIEditBox; class IGUIComboBox; } }
 
 namespace ygo {
 
@@ -41,6 +41,10 @@ public:
 	bool split_zones = false;			// tag duels: each teammate has their own section of the field
 	bool random_backgrounds = true;		// pick each duel's background from textures/backgrounds
 	bool custom_background_field = false;	// still draw the field overlay (field2/field3.png) over custom backgrounds
+	bool tournament = false;			// each Host plays the next match of the tournament, and the next one follows by itself
+	int tournament_entrants = 8;		// used when a new tournament starts
+	int tournament_format = 0;			// used when a new tournament starts: 0 = single elimination, 1 = round robin
+	int tournament_pause = 10;			// seconds between tournament matches
 	std::wstring python = L"python";
 	std::wstring script = L"random_duel.py";
 	std::wstring script_args;
@@ -87,6 +91,13 @@ public:
 	void DrawTurnHighlight(int left, int top, int right, int bottom) const;
 	void ShowWindowAfterRoom() const;
 
+	// Tournaments
+	void OnDuelWin(int side);	// MSG_WIN: 0 = bottom player/team won, 1 = top, -1 = draw
+	void OnRoomEnd();			// the room closed after its duel or match
+	void Tick();				// every frame, after the GUI is drawn (GUI lock held)
+	void AfterFrame();			// every frame, after the GUI lock is released
+	bool OnKey(int key, bool pressed);	// keys while the between-matches panel is up
+
 private:
 	bool observer_requested = false;
 	bool bots_launched = false;
@@ -109,6 +120,29 @@ private:
 	};
 	std::vector<Hologram> holograms;
 	irr::gui::IGUICheckBox* chkSplitZones = nullptr;	// added to the host window
+	irr::gui::IGUICheckBox* chkTournament = nullptr;
+	irr::gui::IGUIEditBox* ebEntrants = nullptr;
+	irr::gui::IGUIComboBox* cbFormat = nullptr;
+
+	// Tournament state. The script keeps the bracket; the game records results and
+	// runs the pause between matches.
+	enum { TOUR_IDLE, TOUR_RECORD, TOUR_RECORDING, TOUR_COUNTDOWN, TOUR_FINISHED };
+	enum { SCRIPT_NONE, SCRIPT_LAUNCH, SCRIPT_RECORD };
+	bool room_is_tournament = false;
+	int tour_state = TOUR_IDLE;
+	bool pause_requested = false;
+	bool host_click_pending = false;
+	int swallow_key = -1;				// key whose release must not reach the game (Esc would minimise it)
+	unsigned long long countdown_end = 0;	// milliseconds, steady clock
+	std::vector<std::wstring> panel_lines;
+	void* script_process = nullptr;		// the running bot script (a Windows process handle)
+	int script_kind = SCRIPT_NONE;
+	bool RunScript(const std::wstring& args, int kind, std::wstring& error);
+	bool PollScript(int& exit_code);
+	int ShowScriptMessages(bool to_panel);	// returns how many lines it showed
+	void StartNextMatch();
+	void StopTournamentLoop(const wchar_t* msg);
+	void DrawTournamentPanel();
 	std::wstring pending_background;	// chosen at duel start, loaded by the drawing code
 	std::wstring last_background;
 	bool background_pending = false;

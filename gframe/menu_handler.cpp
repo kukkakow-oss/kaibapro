@@ -29,6 +29,9 @@ void UpdateDeck() {
 	DuelClient::SendBufferToServer(CTOS_UPDATE_DECK, deckbuf, pdeck - deckbuf);
 }
 bool MenuHandler::OnEvent(const irr::SEvent& event) {
+	// Bot Theater: Enter/Esc on the between-matches tournament panel (before Esc can minimise the game)
+	if(event.EventType == irr::EET_KEY_INPUT_EVENT && botTheater.OnKey(event.KeyInput.Key, event.KeyInput.PressedDown))
+		return true;
 	if(mainGame->dField.OnCommonEvent(event))
 		return false;
 	switch(event.EventType) {

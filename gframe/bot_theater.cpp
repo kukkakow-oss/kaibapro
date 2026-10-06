@@ -8,6 +8,7 @@
 #include "client_card.h"
 #include <cmath>
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 #include <cwctype>
 #include <random>
@@ -24,6 +25,9 @@ BotTheater botTheater;
 
 static const char* CONFIG_FILE = "bot_theater.conf";
 static const wchar_t* LOG_FILE = L"bot_theater.log";
+static const char* RESULTS_FILE = "bot_theater_results.txt";	// duel results, read by the script
+static const char* MESSAGES_FILE = "bot_theater_messages.txt";	// announcements written by the script
+static const int EXIT_TOURNAMENT_OVER = 10;	// the script's exit code once a tournament has its champion
 
 static std::wstring FromUTF8(const char* s) {
 	std::vector<wchar_t> buf(std::strlen(s) + 1);
@@ -93,6 +97,10 @@ void BotTheater::Load() {
 		else if(key == "split_zones") split_zones = ToInt(value, 0) != 0;
 		else if(key == "random_backgrounds") random_backgrounds = ToInt(value, 1) != 0;
 		else if(key == "custom_background_field") custom_background_field = ToInt(value, 0) != 0;
+		else if(key == "tournament") tournament = ToInt(value, 0) != 0;
+		else if(key == "tournament_entrants") tournament_entrants = ToInt(value, tournament_entrants);
+		else if(key == "tournament_format") tournament_format = (value.find("robin") != std::string::npos || value == "1") ? 1 : 0;
+		else if(key == "tournament_pause") tournament_pause = ToInt(value, tournament_pause);
 		else if(key == "python") python = FromUTF8(value.c_str());
 		else if(key == "script") script = FromUTF8(value.c_str());
 		else if(key == "script_args") script_args = FromUTF8(value.c_str());
@@ -190,6 +198,16 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "start_hand = %d\n", start_hand);
 	std::fprintf(fp, "draw_count = %d\n", draw_count);
 	std::fprintf(fp, "password = %s\n", ToUTF8(password).c_str());
+	std::fprintf(fp, "# Tournaments (also set in the host window). With tournament = 1, each Host plays\n");
+	std::fprintf(fp, "# the next match of the tournament kept in tournament.json, and when it ends the\n");
+	std::fprintf(fp, "# next one starts by itself after tournament_pause seconds. A new tournament\n");
+	std::fprintf(fp, "# starts when there isn't one going; tournament_entrants (2-64) and\n");
+	std::fprintf(fp, "# tournament_format (single = single elimination, roundrobin = everyone plays\n");
+	std::fprintf(fp, "# everyone) are only used then. Tag rooms make teams of two.\n");
+	std::fprintf(fp, "tournament = %d\n", tournament ? 1 : 0);
+	std::fprintf(fp, "tournament_entrants = %d\n", tournament_entrants);
+	std::fprintf(fp, "tournament_format = %s\n", tournament_format == 1 ? "roundrobin" : "single");
+	std::fprintf(fp, "tournament_pause = %d\n", tournament_pause);
 	std::fprintf(fp, "# Tag duels only: 1 = each team's first player may only place cards in the left\n");
 	std::fprintf(fp, "# section of the field and its second player in the right (middle zones shared)\n");
 	std::fprintf(fp, "split_zones = %d\n", split_zones ? 1 : 0);
@@ -203,6 +221,26 @@ void BotTheater::ApplyToHostWindow() {
 			mainGame->wCreateHost, -1, L"Split zones between teammates (tag duels)");
 	}
 	chkSplitZones->setChecked(split_zones);
+	if(!chkTournament) {
+		// Tournament options, in the free space right of Start LP / Start Hand / Draw Count.
+		auto env = mainGame->env;
+		chkTournament = env->addCheckBox(false, irr::core::rect<irr::s32>(240, 235, 370, 260), mainGame->wCreateHost, -1, L"Tournament");
+		chkTournament->setToolTipText(L"Each Host plays the next match of the tournament, and the next match starts by itself. "
+			L"Entrants and format are used when a new tournament starts.");
+		env->addStaticText(L"Entrants", irr::core::rect<irr::s32>(240, 270, 310, 290), false, false, mainGame->wCreateHost);
+		ebEntrants = env->addEditBox(L"8", irr::core::rect<irr::s32>(310, 265, 370, 290), true, mainGame->wCreateHost);
+		ebEntrants->setTextAlignment(irr::gui::EGUIA_CENTER, irr::gui::EGUIA_CENTER);
+		cbFormat = env->addComboBox(irr::core::rect<irr::s32>(240, 295, 370, 320), mainGame->wCreateHost);
+		cbFormat->addItem(L"Single elimination");
+		cbFormat->addItem(L"Round robin");
+	}
+	chkTournament->setChecked(tournament);
+	{
+		wchar_t nbuf[16];
+		myswprintf(nbuf, L"%d", tournament_entrants);
+		ebEntrants->setText(nbuf);
+	}
+	cbFormat->setSelected(tournament_format == 1 ? 1 : 0);
 	wchar_t buf[32];
 	auto* lf = mainGame->cbHostLFlist;
 	for(irr::u32 i = 0; i < lf->getItemCount(); ++i) {
@@ -246,6 +284,12 @@ void BotTheater::ReadFromHostWindow() {
 	password = mainGame->ebServerPass->getText();
 	if(chkSplitZones)
 		split_zones = chkSplitZones->isChecked();
+	if(chkTournament) {
+		tournament = chkTournament->isChecked();
+		int n = (int)std::wcstol(ebEntrants->getText(), nullptr, 10);
+		tournament_entrants = std::min(64, std::max(2, n > 0 ? n : 8));
+		tournament_format = (cbFormat->getSelected() == 1) ? 1 : 0;
+	}
 }
 
 void BotTheater::OnHostConfirm() {
@@ -253,6 +297,9 @@ void BotTheater::OnHostConfirm() {
 	observer_requested = false;
 	bots_launched = false;
 	start_sent = false;
+	room_is_tournament = false;
+	tour_state = TOUR_IDLE;
+	panel_lines.clear();
 	if(!enabled)
 		return;
 	ReadFromHostWindow();
@@ -260,6 +307,7 @@ void BotTheater::OnHostConfirm() {
 	room_port = mainGame->gameConf.serverport;
 	room_is_tag = (mode == 2);
 	room_password = password;
+	room_is_tournament = tournament;
 }
 
 void BotTheater::OnTypeChange(unsigned char selftype) {
@@ -277,7 +325,10 @@ void BotTheater::OnTypeChange(unsigned char selftype) {
 		return;
 	bots_launched = true;
 	std::wstring error;
-	if(LaunchBots(error)) {
+	mainGame->gMutex.lock();	// the main loop watches the script's process
+	bool launched = LaunchBots(error);
+	mainGame->gMutex.unlock();
+	if(launched) {
 		SystemMessage(room_is_tag ? L"Bot Theater: sending in four bots..." : L"Bot Theater: sending in two bots...");
 	} else {
 		std::wstring msg = L"Bot Theater: couldn't start the bot script (" + error + L"). Check python and script in bot_theater.conf.";
@@ -794,24 +845,46 @@ void BotTheater::SystemMessage(const wchar_t* msg) const {
 }
 
 bool BotTheater::LaunchBots(std::wstring& error) {
-#ifdef _WIN32
 	wchar_t num[16];
 	myswprintf(num, L"%d", (int)room_port);
-	std::wstring cmd = L"\"" + python + L"\" \"" + script + L"\" --launch --port " + num;
+	std::wstring args = std::wstring(L"--launch --port ") + num;
 	if(room_is_tag)
-		cmd += L" --tag";
+		args += L" --tag";
 	if(!room_password.empty())
-		cmd += L" --password \"" + room_password + L"\"";
+		args += L" --password \"" + room_password + L"\"";
+	if(room_is_tournament) {
+		wchar_t tbuf[64];
+		myswprintf(tbuf, L" --tournament --entrants %d --format %ls", tournament_entrants,
+			tournament_format == 1 ? L"roundrobin" : L"single");
+		args += tbuf;
+	}
+	return RunScript(args, SCRIPT_LAUNCH, error);
+}
+
+// Starts the bot script with the given options (plus script_args from the settings).
+// Its output goes to bot_theater.log; the game checks on it every frame (PollScript).
+bool BotTheater::RunScript(const std::wstring& args, int kind, std::wstring& error) {
+#ifdef _WIN32
+	if(script_process) {	// an earlier run that's still going: stop watching it
+		CloseHandle((HANDLE)script_process);
+		script_process = nullptr;
+	}
+	std::wstring cmd = L"\"" + python + L"\" \"" + script + L"\" " + args;
 	if(!script_args.empty())
 		cmd += L" " + script_args;
 
-	// The script's output goes to bot_theater.log, so problems can be checked.
+	// The launch run starts a fresh log; the result run adds to it.
 	SECURITY_ATTRIBUTES sa;
 	sa.nLength = sizeof sa;
 	sa.lpSecurityDescriptor = nullptr;
 	sa.bInheritHandle = TRUE;
-	HANDLE log = CreateFileW(LOG_FILE, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
-		CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+	HANDLE log;
+	if(kind == SCRIPT_RECORD)
+		log = CreateFileW(LOG_FILE, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+			OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+	else
+		log = CreateFileW(LOG_FILE, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+			CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 
 	STARTUPINFOEXW si;
 	std::memset(&si, 0, sizeof si);
@@ -854,12 +927,282 @@ bool BotTheater::LaunchBots(std::wstring& error) {
 		return false;
 	}
 	CloseHandle(pi.hThread);
-	CloseHandle(pi.hProcess);
+	script_process = pi.hProcess;
+	script_kind = kind;
 	return true;
 #else
+	(void)args;
+	(void)kind;
 	error = L"only supported on Windows";
 	return false;
 #endif
+}
+
+// True once the script has finished, with its exit code.
+bool BotTheater::PollScript(int& exit_code) {
+#ifdef _WIN32
+	if(!script_process)
+		return false;
+	if(WaitForSingleObject((HANDLE)script_process, 0) != WAIT_OBJECT_0)
+		return false;
+	DWORD code = 1;
+	GetExitCodeProcess((HANDLE)script_process, &code);
+	CloseHandle((HANDLE)script_process);
+	script_process = nullptr;
+	exit_code = (int)code;
+	return true;
+#else
+	(void)exit_code;
+	return false;
+#endif
+}
+
+// The script leaves announcements in bot_theater_messages.txt; show them in the chat
+// (and on the between-matches panel), then remove the file.
+int BotTheater::ShowScriptMessages(bool to_panel) {
+	if(to_panel)
+		panel_lines.clear();
+	FILE* fp = std::fopen(MESSAGES_FILE, "r");
+	if(!fp)
+		return 0;
+	int count = 0;
+	char line[1024];
+	bool first = true;
+	while(std::fgets(line, sizeof line, fp)) {
+		char* p = line;
+		if(first && (unsigned char)p[0] == 0xEF && (unsigned char)p[1] == 0xBB && (unsigned char)p[2] == 0xBF)
+			p += 3;
+		first = false;
+		std::string text = Trim(p);
+		if(text.empty())
+			continue;
+		std::wstring msg = FromUTF8(text.c_str());
+		mainGame->AddChatMsg(msg.c_str(), 8);
+		++count;
+		if(to_panel && panel_lines.size() < 8)
+			panel_lines.push_back(msg);
+	}
+	std::fclose(fp);
+	std::remove(MESSAGES_FILE);
+	return count;
+}
+
+// ---------------------------------------------------------------------------
+// Tournaments. The script (random_duel.py) keeps the bracket in tournament.json.
+// The game writes down who wins each duel, runs the script to record the match
+// once the room closes, then hosts the next match after a short pause.
+
+void BotTheater::OnDuelWin(int side) {
+	// Network thread. One line per duel: WIN or DRAW, then the two sides' names
+	// (winners first), two names per side (the second is empty outside tag duels).
+	if(!room_is_tournament || !SpectatingBotRoom())
+		return;
+	const auto& d = mainGame->dInfo;
+	auto names = [&d](int s) {
+		std::wstring first = (s == 0) ? d.hostname : d.clientname;
+		std::wstring second = d.isTag ? ((s == 0) ? d.hostname_tag : d.clientname_tag) : L"";
+		return first + L"\t" + second;
+	};
+	std::wstring line = (side < 0) ? L"DRAW\t" + names(0) + L"\t" + names(1)
+		: L"WIN\t" + names(side) + L"\t" + names(1 - side);
+	FILE* fp = std::fopen(RESULTS_FILE, "a");
+	if(!fp)
+		return;
+	std::fprintf(fp, "%s\n", ToUTF8(line).c_str());
+	std::fclose(fp);
+}
+
+void BotTheater::OnRoomEnd() {
+	// Network thread, GUI lock held: the room has closed after its duel or match.
+	if(!room_is_tournament) {
+		ShowWindowAfterRoom();
+		return;
+	}
+	room_is_tournament = false;
+	pause_requested = false;
+	tour_state = TOUR_RECORD;	// Tick() runs the script to record the result
+	panel_lines.clear();
+	panel_lines.push_back(L"Saving the result...");
+}
+
+static unsigned long long NowMs() {
+	return (unsigned long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+void BotTheater::Tick() {
+	int code = 0;
+	if(script_process && PollScript(code)) {
+		int kind = script_kind;
+		script_kind = SCRIPT_NONE;
+		if(kind == SCRIPT_RECORD) {
+			int shown = ShowScriptMessages(true);
+			if(code == 0 || code == EXIT_TOURNAMENT_OVER) {
+				if(code == EXIT_TOURNAMENT_OVER) {
+					tour_state = TOUR_FINISHED;
+				} else if(pause_requested) {
+					StopTournamentLoop(L"Bot Theater: tournament paused. Press Enter to play the next match.");
+				} else {
+					tour_state = TOUR_COUNTDOWN;
+					countdown_end = NowMs() + (unsigned long long)std::max(0, tournament_pause) * 1000;
+				}
+			} else if(shown) {
+				StopTournamentLoop(L"Bot Theater: tournament paused (see the message above).");
+			} else if(code == 2) {
+				StopTournamentLoop(L"Bot Theater: the bot script couldn't run its tournament step (details in bot_theater.log). "
+					L"Make sure random_duel.py is the new version.");
+			} else {
+				StopTournamentLoop(L"Bot Theater: couldn't record the tournament result (details in bot_theater.log). Press Enter to replay the match.");
+			}
+		} else {
+			int shown = ShowScriptMessages(false);
+			if(code == 2 && !shown)
+				mainGame->AddChatMsg(L"Bot Theater: the bot script couldn't start (details in bot_theater.log). Is random_duel.py up to date?", 8);
+			else if(code != 0 && !shown)
+				mainGame->AddChatMsg(L"Bot Theater: the bot script stopped with a problem (details in bot_theater.log).", 8);
+		}
+	}
+	switch(tour_state) {
+	case TOUR_RECORD: {
+		if(script_process)
+			break;	// the launch run is still going; wait for it
+		std::wstring error;
+		if(RunScript(L"--tournament-record", SCRIPT_RECORD, error)) {
+			tour_state = TOUR_RECORDING;
+		} else {
+			std::wstring msg = L"Bot Theater: couldn't start the bot script (" + error + L"). Check python and script in bot_theater.conf.";
+			StopTournamentLoop(msg.c_str());
+		}
+		break;
+	}
+	case TOUR_COUNTDOWN:
+		if(NowMs() >= countdown_end)
+			StartNextMatch();
+		break;
+	default:
+		break;
+	}
+	if(tour_state != TOUR_IDLE)
+		DrawTournamentPanel();
+}
+
+void BotTheater::AfterFrame() {
+	// Hosting runs network code, so it's done here, outside the GUI lock.
+	if(!host_click_pending)
+		return;
+	host_click_pending = false;
+	irr::SEvent click;
+	click.EventType = irr::EET_GUI_EVENT;
+	click.GUIEvent.Caller = mainGame->btnHostConfirm;
+	click.GUIEvent.Element = 0;
+	click.GUIEvent.EventType = irr::gui::EGET_BUTTON_CLICKED;
+	mainGame->device->postEventFromUser(click);
+}
+
+void BotTheater::StartNextMatch() {
+	// Host again with the same settings; the host window stays hidden.
+	tour_state = TOUR_IDLE;
+	panel_lines.clear();
+	mainGame->btnHostConfirm->setEnabled(true);
+	mainGame->btnHostCancel->setEnabled(true);
+	host_click_pending = true;
+}
+
+void BotTheater::StopTournamentLoop(const wchar_t* msg) {
+	tour_state = TOUR_IDLE;
+	panel_lines.clear();
+	if(msg)
+		mainGame->AddChatMsg(msg, 8);
+	ShowWindowAfterRoom();
+}
+
+bool BotTheater::OnKey(int key, bool pressed) {
+	// Enter: start the next match now (or close the final panel). Esc: pause the
+	// tournament and go back to the host window.
+	if(!pressed) {
+		if(key == swallow_key) {
+			swallow_key = -1;
+			return true;
+		}
+		return false;
+	}
+	if(tour_state == TOUR_IDLE)
+		return false;
+	if(key != irr::KEY_RETURN && key != irr::KEY_ESCAPE)
+		return false;
+	swallow_key = key;
+	switch(tour_state) {
+	case TOUR_COUNTDOWN:
+		if(key == irr::KEY_RETURN)
+			countdown_end = 0;
+		else
+			StopTournamentLoop(L"Bot Theater: tournament paused. Press Enter to play the next match.");
+		break;
+	case TOUR_RECORD:
+	case TOUR_RECORDING:
+		if(key == irr::KEY_ESCAPE) {
+			pause_requested = true;
+			panel_lines.push_back(L"Pausing once the result is saved...");
+		}
+		break;
+	case TOUR_FINISHED:
+		StopTournamentLoop(nullptr);
+		break;
+	default:
+		break;
+	}
+	return true;
+}
+
+void BotTheater::DrawTournamentPanel() {
+	auto driver = mainGame->driver;
+	auto font = mainGame->textFont;
+	auto big = mainGame->lpcFont;
+	if(!font)
+		return;
+	std::vector<std::wstring> lines = panel_lines;
+	std::wstring countdown, hint;
+	if(tour_state == TOUR_COUNTDOWN) {
+		unsigned long long now = NowMs();
+		unsigned long long left = countdown_end > now ? (countdown_end - now + 999) / 1000 : 0;
+		countdown = std::to_wstring(left);
+		hint = L"Enter: start now      Esc: pause the tournament";
+	} else if(tour_state == TOUR_FINISHED) {
+		hint = L"Enter or Esc: back to the host window";
+	} else {
+		hint = L"Esc: pause after this";
+	}
+	const std::wstring title = L"BOT THEATER TOURNAMENT";
+	int line_h = font->getDimension(L"Ay").Height + (int)(8 * mainGame->yScale);
+	int big_h = (!countdown.empty() && big) ? big->getDimension(L"0").Height + (int)(10 * mainGame->yScale) : 0;
+	int width = (int)(520 * mainGame->xScale);
+	for(auto& l : lines)
+		width = std::max(width, (int)font->getDimension(l.c_str()).Width + (int)(60 * mainGame->xScale));
+	width = std::min(width, (int)mainGame->window_size.Width - 20);
+	int pad = (int)(18 * mainGame->yScale);
+	int height = pad * 2 + line_h * (int)(lines.size() + 3) + big_h;
+	int cx = mainGame->window_size.Width / 2, cy = mainGame->window_size.Height / 2;
+	irr::core::recti box(cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2);
+	driver->draw2DRectangle(irr::video::SColor(215, 10, 14, 30), box);
+	irr::video::SColor gold(255, 255, 200, 40);
+	for(int i = 0; i < 2; ++i)
+		driver->draw2DRectangleOutline(irr::core::recti(box.UpperLeftCorner.X + i, box.UpperLeftCorner.Y + i,
+			box.LowerRightCorner.X - i, box.LowerRightCorner.Y - i), gold);
+	int y = box.UpperLeftCorner.Y + pad;
+	auto row = [&](const std::wstring& text, irr::gui::CGUITTFont* f, int h, irr::video::SColor color) {
+		irr::core::recti r(box.UpperLeftCorner.X, y, box.LowerRightCorner.X, y + h);
+		f->drawUstring(text, r + irr::core::vector2di(1, 1), irr::video::SColor(255, 0, 0, 0), true, true);	// shadow
+		f->drawUstring(text, r, color, true, true);
+		y += h;
+	};
+	row(title, font, line_h, gold);
+	y += line_h / 2;
+	for(auto& l : lines)
+		row(l, font, line_h, irr::video::SColor(255, 255, 255, 255));
+	if(!countdown.empty() && big)
+		row(countdown, big, big_h, irr::video::SColor(255, 120, 220, 255));
+	y += line_h / 2 - (countdown.empty() ? 0 : line_h / 2);
+	row(hint, font, line_h, irr::video::SColor(255, 170, 170, 170));
 }
 
 }

@@ -1084,7 +1084,9 @@ void Game::MainLoop() {
 		}
 		DrawGUI();
 		DrawSpec();
+		botTheater.Tick();	// Bot Theater: tournament results and the pause between matches
 		gMutex.unlock();
+		botTheater.AfterFrame();
 		if(signalFrame > 0) {
 			signalFrame--;
 			if(!signalFrame)

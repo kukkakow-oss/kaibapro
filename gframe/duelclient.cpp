@@ -727,7 +727,7 @@ void DuelClient::HandleSTOCPacketLan(unsigned char* data, int len) {
 		if(bot_mode)
 			mainGame->ShowElement(mainGame->wSinglePlay);
 		else if(botTheater.active)
-			botTheater.ShowWindowAfterRoom();
+			botTheater.OnRoomEnd();	// back to the host window, or on to the next tournament match
 		else
 			mainGame->ShowElement(mainGame->wLanWindow);
 		mainGame->gMutex.unlock();
@@ -1220,6 +1220,7 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 		mainGame->dInfo.isFinished = true;
 		int player = BufferIO::ReadUInt8(pbuf);
 		int type = BufferIO::ReadUInt8(pbuf);
+		botTheater.OnDuelWin(player == 2 ? -1 : mainGame->LocalPlayer(player));	// Bot Theater: tournament results
 		mainGame->showcarddif = 110;
 		mainGame->showcardp = 0;
 		mainGame->dInfo.vic_string = L"";
