@@ -35,6 +35,8 @@ public:
 	int hologram_rest_opacity = 50;	// percent of full opacity while resting
 	bool hologram_backrow = true;		// Spell/Trap and Pendulum zones too
 	int hologram_backrow_size = 65;	// percent of the monster hologram size
+	int hologram_backrow_lift_bottom = 50;	// bottom player's back row: float height, percent of the monster row's
+	int hologram_backrow_lift_top = 125;	// top player's back row (sits behind its monster row, so it floats higher)
 	double top_hand_raise = 1.0;		// card heights to raise the top player's hand by
 	bool split_zones = false;			// tag duels: each teammate has their own section of the field
 	bool random_backgrounds = true;		// pick each duel's background from textures/backgrounds

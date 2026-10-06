@@ -87,6 +87,8 @@ void BotTheater::Load() {
 		else if(key == "hologram_rest_opacity") hologram_rest_opacity = ToInt(value, hologram_rest_opacity);
 		else if(key == "hologram_backrow") hologram_backrow = ToInt(value, 1) != 0;
 		else if(key == "hologram_backrow_size") hologram_backrow_size = ToInt(value, hologram_backrow_size);
+		else if(key == "hologram_backrow_lift_bottom") hologram_backrow_lift_bottom = ToInt(value, hologram_backrow_lift_bottom);
+		else if(key == "hologram_backrow_lift_top") hologram_backrow_lift_top = ToInt(value, hologram_backrow_lift_top);
 		else if(key == "top_hand_raise") top_hand_raise = std::strtod(value.c_str(), nullptr);
 		else if(key == "split_zones") split_zones = ToInt(value, 0) != 0;
 		else if(key == "random_backgrounds") random_backgrounds = ToInt(value, 1) != 0;
@@ -136,7 +138,11 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "# of full), until the card leaves its zone; 0 = it fades out instead.\n");
 	std::fprintf(fp, "# Either way it fades out early if the card leaves the field.\n");
 	std::fprintf(fp, "# hologram_backrow: 1 = Spell/Trap and Pendulum zones get holograms too,\n");
-	std::fprintf(fp, "# floating lower, at hologram_backrow_size percent of the monster size.\n");
+	std::fprintf(fp, "# at hologram_backrow_size percent of the monster size.\n");
+	std::fprintf(fp, "# hologram_backrow_lift_bottom / _top: how high back-row holograms float, as a\n");
+	std::fprintf(fp, "# percent of the monster holograms' height, for the bottom and top player. The\n");
+	std::fprintf(fp, "# bottom back row floats lower so it stays clear of the monsters behind it; the\n");
+	std::fprintf(fp, "# top back row is behind its monsters, so it floats higher to peek over them.\n");
 	std::fprintf(fp, "holograms = %d\n", holograms_on ? 1 : 0);
 	std::fprintf(fp, "hologram_size = %d\n", hologram_size);
 	std::fprintf(fp, "hologram_seconds = %.2f\n", hologram_seconds);
@@ -145,7 +151,9 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "hologram_rest_size = %d\n", hologram_rest_size);
 	std::fprintf(fp, "hologram_rest_opacity = %d\n", hologram_rest_opacity);
 	std::fprintf(fp, "hologram_backrow = %d\n", hologram_backrow ? 1 : 0);
-	std::fprintf(fp, "hologram_backrow_size = %d\n\n", hologram_backrow_size);
+	std::fprintf(fp, "hologram_backrow_size = %d\n", hologram_backrow_size);
+	std::fprintf(fp, "hologram_backrow_lift_bottom = %d\n", hologram_backrow_lift_bottom);
+	std::fprintf(fp, "hologram_backrow_lift_top = %d\n\n", hologram_backrow_lift_top);
 	std::fprintf(fp, "# 1 = each duel's background is picked at random from the images in\n");
 	std::fprintf(fp, "# textures/backgrounds (.jpg, .jpeg, .png or .bmp). If that folder is empty or\n");
 	std::fprintf(fp, "# missing, the usual textures/bg.jpg is used.\n");
@@ -521,8 +529,21 @@ void BotTheater::DrawHolograms() {
 	float opacity = std::min(100, std::max(5, hologram_opacity)) / 100.0f;
 	float rest_scale = std::max(10, hologram_rest_size) / 100.0f;
 	float rest_alpha = std::min(100, std::max(0, hologram_rest_opacity)) / 100.0f;
+	float lift_bottom = std::min(300, std::max(0, hologram_backrow_lift_bottom)) / 100.0f;
+	float lift_top = std::min(300, std::max(0, hologram_backrow_lift_top)) / 100.0f;
 	int rule = (mainGame->dInfo.duel_rule >= 4) ? 1 : 0;
 
+	// First pass: update every hologram and work out where it goes this frame.
+	struct HoloDraw {
+		unsigned int code;
+		bool backrow;
+		float alpha, scale;
+		irr::core::vector3df base;	// bottom centre of the art
+		irr::core::vector3df floor;	// spot on the card the beam comes from
+		float depth;				// distance from the camera
+	};
+	std::vector<HoloDraw> draws;
+	draws.reserve(holograms.size());
 	for(size_t i = 0; i < holograms.size();) {
 		Hologram& h = holograms[i];
 		auto& field = mainGame->dField;
@@ -581,7 +602,9 @@ void BotTheater::DrawHolograms() {
 		alpha *= opacity;
 		if(h.backrow) {
 			scale *= backrow_scale;
-			lift *= 0.5f;	// back-row holograms float lower, so they cover less of the monster row
+			// The bottom back row is in front of its monsters, so it floats lower to stay clear
+			// of them; the top back row is behind its monsters, so it floats higher instead.
+			lift *= (h.side == 0) ? lift_bottom : lift_top;
 		}
 		if(h.frame < 1000000)
 			++h.frame;
@@ -594,17 +617,34 @@ void BotTheater::DrawHolograms() {
 		const irr::video::S3DVertex* zone = h.backrow ? matManager.vFieldSzone[h.side][h.sequence][rule]
 			: matManager.vFieldMzone[h.side][h.sequence];
 		irr::core::vector3df center = (zone[0].Pos + zone[1].Pos + zone[2].Pos + zone[3].Pos) / 4.0f;
+		HoloDraw d;
+		d.code = h.code;
+		d.backrow = h.backrow;
+		d.alpha = alpha;
+		d.scale = scale;
+		d.base = center + irr::core::vector3df(0, 0, lift);
+		d.floor = center + irr::core::vector3df(0, 0, 0.02f);
+		d.depth = (d.base - irr::core::vector3df(4.2f, 8.0f, 7.8f)).dotProduct(view);
+		draws.push_back(d);
+	}
+
+	// Second pass: draw the furthest first, so nearer holograms cover the ones behind them
+	// (instead of whichever appeared last ending up in front).
+	std::stable_sort(draws.begin(), draws.end(), [](const HoloDraw& x, const HoloDraw& y) { return x.depth > y.depth; });
+	for(const HoloDraw& d : draws) {
+		float alpha = d.alpha, scale = d.scale;
+		const irr::core::vector3df& base = d.base;
+		const irr::core::vector3df& floor = d.floor;
 
 		// Crop to the art box (measured from standard card images); Pendulums stop above their text box.
 		bool pendulum = false;
-		auto cp = dataManager.GetCodePointer(h.code);
+		auto cp = dataManager.GetCodePointer(d.code);
 		if(cp != dataManager.datas_end() && (cp->second.type & 0x1000000))
 			pendulum = true;
 		float u1 = 50 / 421.0f, u2 = 371 / 421.0f, v1 = 113 / 614.0f, v2 = (pendulum ? 386 : 434) / 614.0f;
 		float width = 1.2f * size_scale * scale;
 		float height = width * ((v2 - v1) * 614.0f) / ((u2 - u1) * 421.0f);
 
-		irr::core::vector3df base = center + irr::core::vector3df(0, 0, lift);
 		irr::core::vector3df half = right * (width / 2);
 		irr::core::vector3df tall = up * height;
 		irr::core::vector3df tl = base - half + tall, tr = base + half + tall, bl = base - half, br = base + half;
@@ -615,8 +655,7 @@ void BotTheater::DrawHolograms() {
 		// Projector beam from the card to the bottom of the art.
 		mat.setTexture(0, tWhite);
 		driver->setMaterial(mat);
-		irr::core::vector3df floorHalf = right * (h.backrow ? 0.22f : 0.3f);
-		irr::core::vector3df floor = center + irr::core::vector3df(0, 0, 0.02f);
+		irr::core::vector3df floorHalf = right * (d.backrow ? 0.22f : 0.3f);
 		DrawQuad(driver, bl, br, floor - floorHalf, floor + floorHalf, cyanTop, cyanBottom);
 
 		// Soft glow behind the art.
@@ -627,7 +666,7 @@ void BotTheater::DrawHolograms() {
 		DrawQuad(driver, base - gHalf + tall + gExtra, base + gHalf + tall + gExtra, base - gHalf - gExtra, base + gHalf - gExtra, glow, glow);
 
 		// The art itself, slightly cyan-tinted.
-		irr::video::ITexture* art = imageManager.GetTexture(h.code);
+		irr::video::ITexture* art = imageManager.GetTexture(d.code);
 		if(art) {
 			mat.setTexture(0, art);
 			driver->setMaterial(mat);
