@@ -86,6 +86,8 @@ public:
 	void DrawHolograms();
 	irr::video::ITexture* DuelBackground();	// background for the current duel (drawing code only)
 	bool HideFieldOverlay() const;			// a custom background is showing, so skip field2/field3.png
+	// The near side's ATK/DEF numbers move up between the two rows of holograms.
+	bool RaiseNearStats() const { return holograms_on && hologram_backrow && SpectatingBotRoom(); }
 	float TopHandShift() const;		// how far back the top hand moves on the board
 	void MapTopHandPoint(int& x, int& y) const;	// mouse position -> where the hand would normally be
 	void DrawTurnHighlight(int left, int top, int right, int bottom) const;

@@ -613,10 +613,18 @@ void Game::DrawMisc() {
 	driver->draw2DRectangle(Resize(632, 30, 688, 50), 0xffffffff, 0xffffffff, 0x00000000, 0x00000000);
 	DrawShadowText(lpcFont, dataManager.GetNumString(dInfo.turn), Resize(635, 5, 687, 40), Resize(0, 0, 2, 0), mainGame->turncolor, 0x80000000, true, false, 0);
 	ClientCard* pcard;
+	// Bot Theater: with holograms on, the near side's ATK/DEF sits just above the middle of
+	// the card, in the gap between the monsters' holograms and the back row's, instead of
+	// at the card's front edge where the back-row holograms cover it.
+	bool raiseStats = botTheater.RaiseNearStats();
 	for(int i = 0; i < 5; ++i) {
 		pcard = dField.mzone[0][i];
-		if(pcard && pcard->code != 0)
-			DrawStatus(pcard, 493 + i * 85, 416, 473 + i * 80, 356);
+		if(pcard && pcard->code != 0) {
+			if(raiseStats)
+				DrawStatus(pcard, 502 + i * 81, 373, 473 + i * 80, 356);
+			else
+				DrawStatus(pcard, 493 + i * 85, 416, 473 + i * 80, 356);
+		}
 	}
 	pcard = dField.mzone[0][5];
 	if(pcard && pcard->code != 0)
