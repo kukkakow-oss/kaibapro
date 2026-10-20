@@ -1030,7 +1030,23 @@ static unsigned long long NowMs() {
 		std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
+// While spectating a bot duel, the phase indicator sits just under the turn counter
+// (above the far player's hand) instead of between the two monster rows. Its usual
+// spot is restored for everything else. Checked every frame, so it also follows window
+// resizes (the game resets the position when the window changes size).
+void BotTheater::PlacePhaseBar() {
+	if(!mainGame->wPhase)
+		return;
+	// Same 375x20 bar as the game's own (480, 310, 855, 330); the current-phase box is its
+	// first 50 pixels, so it lands centred under the turn counter (632-688).
+	irr::core::recti wanted = SpectatingBotRoom() ? mainGame->Resize(635, 54, 1010, 74)
+		: mainGame->Resize(480, 310, 855, 330);
+	if(mainGame->wPhase->getRelativePosition() != wanted)
+		mainGame->wPhase->setRelativePosition(wanted);
+}
+
 void BotTheater::Tick() {
+	PlacePhaseBar();
 	int code = 0;
 	if(script_process && PollScript(code)) {
 		int kind = script_kind;

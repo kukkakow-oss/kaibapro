@@ -145,6 +145,7 @@ private:
 	void StartNextMatch();
 	void StopTournamentLoop(const wchar_t* msg);
 	void DrawTournamentPanel();
+	void PlacePhaseBar();
 	std::wstring pending_background;	// chosen at duel start, loaded by the drawing code
 	std::wstring last_background;
 	bool background_pending = false;
