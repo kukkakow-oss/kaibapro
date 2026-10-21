@@ -128,6 +128,7 @@ void Game::DrawBackGround() {
 		driver->setMaterial(matManager.mTexture);
 		driver->drawVertexPrimitiveList(matManager.vField, 4, matManager.iRectangle, 2);
 	}
+	botTheater.DrawTurnGlow();	// Bot Theater: behind every card, hologram and piece of the interface
 	driver->setMaterial(matManager.mBackLine);
 	//select field
 	if(dInfo.curMsg == MSG_SELECT_PLACE || dInfo.curMsg == MSG_SELECT_DISFIELD || dInfo.curMsg == MSG_HINT) {

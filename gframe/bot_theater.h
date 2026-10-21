@@ -26,6 +26,8 @@ public:
 	bool info_follows_actions = true;
 	bool save_replays = false;
 	bool turn_highlight = true;
+	bool turn_glow = true;			// faint glow where the turn player's hand goes
+	int turn_glow_opacity = 50;		// percent
 	bool holograms_on = true;
 	int hologram_size = 100;		// percent
 	double hologram_seconds = 1.5;
@@ -91,6 +93,7 @@ public:
 	float TopHandShift() const;		// how far back the top hand moves on the board
 	void MapTopHandPoint(int& x, int& y) const;	// mouse position -> where the hand would normally be
 	void DrawTurnHighlight(int left, int top, int right, int bottom) const;
+	void DrawTurnGlow();	// drawing code only: straight after the field, before any cards
 	void ShowWindowAfterRoom() const;
 
 	// Tournaments
@@ -112,6 +115,9 @@ private:
 	int turn_player = -1;	// turn player as the duel numbers them (not affected by swapping sides)
 	int tag_member[2] = { 0, 1 };	// tag duels: which teammate is playing for each duel player (0 = the team's first)
 	int TurnSection() const;	// split-zone tag duels: the half of the field the turn player can use
+	int CurrentTurnSide() const;	// like TurnSide(), whatever the turn_highlight setting
+	irr::video::ITexture* tTurnGlow = nullptr;
+	void MakeTurnGlowTexture();
 
 	struct Hologram {
 		unsigned int code;

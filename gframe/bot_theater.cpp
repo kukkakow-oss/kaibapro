@@ -82,6 +82,8 @@ void BotTheater::Load() {
 		else if(key == "info_follows_actions") info_follows_actions = ToInt(value, 1) != 0;
 		else if(key == "save_replays") save_replays = ToInt(value, 0) != 0;
 		else if(key == "turn_highlight") turn_highlight = ToInt(value, 1) != 0;
+		else if(key == "turn_glow") turn_glow = ToInt(value, 1) != 0;
+		else if(key == "turn_glow_opacity") turn_glow_opacity = ToInt(value, turn_glow_opacity);
 		else if(key == "holograms") holograms_on = ToInt(value, 1) != 0;
 		else if(key == "hologram_size") hologram_size = ToInt(value, hologram_size);
 		else if(key == "hologram_seconds") hologram_seconds = std::strtod(value.c_str(), nullptr);
@@ -140,6 +142,10 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "# 1 = gold frame around the avatar of the player whose turn it is\n");
 	std::fprintf(fp, "# (in split-zone tag duels it's cut off on the side of the field that player can't use)\n");
 	std::fprintf(fp, "turn_highlight = %d\n\n", turn_highlight ? 1 : 0);
+	std::fprintf(fp, "# 1 = faint gold glow behind where the turn player's hand goes (in split-zone tag\n");
+	std::fprintf(fp, "# duels, only on that player's side). turn_glow_opacity is a percentage.\n");
+	std::fprintf(fp, "turn_glow = %d\n", turn_glow ? 1 : 0);
+	std::fprintf(fp, "turn_glow_opacity = %d\n\n", turn_glow_opacity);
 	std::fprintf(fp, "# Holograms of face-up cards' art. 1 = on, 0 = off\n");
 	std::fprintf(fp, "# hologram_size and hologram_opacity are percentages (100 = normal).\n");
 	std::fprintf(fp, "# hologram_seconds is how long it shows at full size after the summon.\n");
@@ -397,10 +403,14 @@ void BotTheater::SetTurnPlayer(int local_player) {
 		turn_text[0] = 0;
 }
 
-int BotTheater::TurnSide() const {
-	if(!active || !turn_highlight || turn_player < 0 || !mainGame->dInfo.isStarted)
+int BotTheater::CurrentTurnSide() const {
+	if(!active || turn_player < 0 || !mainGame->dInfo.isStarted)
 		return -1;
 	return mainGame->LocalPlayer(turn_player);	// follows the spectator swap button
+}
+
+int BotTheater::TurnSide() const {
+	return turn_highlight ? CurrentTurnSide() : -1;
 }
 
 // Split-zone tag duels: the half of the field the player taking this turn can use, as it
@@ -408,7 +418,7 @@ int BotTheater::TurnSide() const {
 int BotTheater::TurnSection() const {
 	if(!SplitZones() || !mainGame->dInfo.isTag)
 		return -1;
-	int side = TurnSide();
+	int side = CurrentTurnSide();
 	if(side < 0)
 		return -1;
 	// A team's first player has its left three columns, the second its right three. The
@@ -809,6 +819,106 @@ void BotTheater::MapTopHandPoint(int& x, int& y) const {
 	float shrink = d1 / d0;	// the raised hand is further away, so it looks smaller
 	x = (int)(axis_x + (x - axis_x) * shrink);
 	y = (int)(screen_y(d0, h0) + (y - screen_y(d1, h1)) * shrink);
+}
+
+// ---------------------------------------------------------------------------
+// Turn glow: a faint gold glow where the turn player's hand goes. It's drawn straight
+// after the field, so cards, holograms and everything else sit on top of it. In
+// split-zone tag duels only the three-fifths on the turn player's side glows.
+
+static const int TURN_GLOW_TEX = 256;	// texture size
+static const int TURN_GLOW_EDGE = 120;	// fade on each side of the texture; the middle is solid
+static const float BOTTOM_HAND_Y = 4.0f;
+static const float HAND_LEFT = 1.55f, HAND_RIGHT = 6.25f;	// edges of a full hand (card centres 1.9 to 5.9)
+static const float HAND_LEAN = 0.798056f;	// hand cards lean back by this much to face the camera
+
+// Where a point on the board appears in the game's base 1024x640 layout.
+static void BaseScreenPoint(float x, float y, float z, float& sx, float& sy) {
+	float d, h;
+	CameraDepth(y, z, d, h);
+	const float axis_x = 0.9f / 1.35f * 1024.0f;	// where the camera's centre line meets the screen
+	sx = axis_x + (x - 4.2f) / d * (1024.0f / 1.35f);
+	sy = (0.42f - h / d) / 0.84f * 640.0f;
+}
+
+void BotTheater::MakeTurnGlowTexture() {
+	if(tTurnGlow)
+		return;
+	auto driver = mainGame->driver;
+	irr::video::IImage* img = driver->createImage(irr::video::ECF_A8R8G8B8,
+		irr::core::dimension2du(TURN_GLOW_TEX, TURN_GLOW_TEX));
+	auto ramp = [](int i) {
+		float d = std::min(i + 0.5f, TURN_GLOW_TEX - i - 0.5f) / TURN_GLOW_EDGE;
+		d = std::min(1.0f, d);
+		return d * d * (3 - 2 * d);	// eases in and out, so the glow has no hard edge
+	};
+	for(int y = 0; y < TURN_GLOW_TEX; ++y) {
+		for(int x = 0; x < TURN_GLOW_TEX; ++x) {
+			float a = ramp(x) * ramp(y);
+			img->setPixel(x, y, irr::video::SColor((irr::u32)(a * 255 + 0.5f), 255, 255, 255));
+		}
+	}
+	tTurnGlow = driver->addTexture("bot_theater_turn_glow", img);
+	img->drop();
+}
+
+void BotTheater::DrawTurnGlow() {
+	if(!turn_glow || turn_glow_opacity <= 0)
+		return;
+	int side = CurrentTurnSide();
+	if(side < 0)
+		return;
+	MakeTurnGlowTexture();
+	if(!tTurnGlow)
+		return;
+	// The screen area a full hand covers (base layout). Hand cards lean back to face the
+	// camera, so take each end of a card: the far end is higher up off the board.
+	float cy = (side == 0) ? BOTTOM_HAND_Y : TOP_HAND_Y - TopHandShift();
+	float left = 1e9f, top = 1e9f, right = -1e9f, bottom = -1e9f;
+	const float xs[2] = { HAND_LEFT, HAND_RIGHT };
+	for(float x : xs) {
+		for(int end = -1; end <= 1; end += 2) {
+			float y = cy + end * 0.5f * std::cos(HAND_LEAN);
+			float z = HAND_Z - end * 0.5f * std::sin(HAND_LEAN);
+			float sx, sy;
+			BaseScreenPoint(x, y, z, sx, sy);
+			left = std::min(left, sx);
+			right = std::max(right, sx);
+			top = std::min(top, sy);
+			bottom = std::max(bottom, sy);
+		}
+	}
+	// Split-zone tag duels: only the three-fifths on the turn player's side.
+	int section = TurnSection();
+	float part = (right - left) * 3 / 5;
+	if(section == 0)
+		right = left + part;
+	else if(section == 1)
+		left = right - part;
+	// The glow reaches a little past the hand all round and fades out over its edge.
+	float pad = 0.4f * (bottom - top);
+	irr::core::recti area = mainGame->Resize((int)(left - pad), (int)(top - pad), (int)(right + pad), (int)(bottom + pad));
+	int w = area.getWidth(), h = area.getHeight();
+	if(w <= 0 || h <= 0)
+		return;
+	int ex = std::min(w / 2, std::max(1, (int)(1.5f * pad * mainGame->xScale)));
+	int ey = std::min(h / 2, std::max(1, (int)(1.5f * pad * mainGame->yScale)));
+	irr::u32 alpha = (irr::u32)(std::min(100, turn_glow_opacity) * 255 / 100);
+	irr::video::SColor gold(alpha, 255, 200, 40);
+	const irr::video::SColor colors[4] = { gold, gold, gold, gold };
+	// Drawn in nine pieces (corners, edges, middle) so the fade keeps its width.
+	const int src[4] = { 0, TURN_GLOW_EDGE, TURN_GLOW_TEX - TURN_GLOW_EDGE, TURN_GLOW_TEX };
+	const int dx[4] = { area.UpperLeftCorner.X, area.UpperLeftCorner.X + ex, area.LowerRightCorner.X - ex, area.LowerRightCorner.X };
+	const int dy[4] = { area.UpperLeftCorner.Y, area.UpperLeftCorner.Y + ey, area.LowerRightCorner.Y - ey, area.LowerRightCorner.Y };
+	for(int j = 0; j < 3; ++j) {
+		for(int i = 0; i < 3; ++i) {
+			irr::core::recti dest(dx[i], dy[j], dx[i + 1], dy[j + 1]);
+			if(dest.getWidth() <= 0 || dest.getHeight() <= 0)
+				continue;
+			irr::core::recti from(src[i], src[j], src[i + 1], src[j + 1]);
+			mainGame->driver->draw2DImage(tTurnGlow, dest, from, nullptr, colors, true);
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
