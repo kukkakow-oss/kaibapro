@@ -138,6 +138,7 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "# (as _LastReplay), 1 = keep every one, named by date and time\n");
 	std::fprintf(fp, "save_replays = %d\n\n", save_replays ? 1 : 0);
 	std::fprintf(fp, "# 1 = gold frame around the avatar of the player whose turn it is\n");
+	std::fprintf(fp, "# (in split-zone tag duels it's cut off on the side of the field that player can't use)\n");
 	std::fprintf(fp, "turn_highlight = %d\n\n", turn_highlight ? 1 : 0);
 	std::fprintf(fp, "# Holograms of face-up cards' art. 1 = on, 0 = off\n");
 	std::fprintf(fp, "# hologram_size and hologram_opacity are percentages (100 = normal).\n");
@@ -377,6 +378,14 @@ void BotTheater::OnCardAction(unsigned int code, int local_player) {
 void BotTheater::SetTurnPlayer(int local_player) {
 	turn_player = mainGame->LocalPlayer(local_player);	// back to the duel's own numbering
 	const auto& d = mainGame->dInfo;
+	// Which teammate is playing, kept the same way as the duel engine keeps it for the
+	// split-zone rule: the first turn starts with each team's starting player, then every
+	// new turn hands the turn player's team over to the other teammate.
+	if(d.turn <= 1) {
+		tag_member[0] = 0;
+		tag_member[1] = 1;
+	} else
+		tag_member[turn_player] ^= 1;
 	const wchar_t* name;
 	if(local_player == 0)
 		name = (d.isTag && d.tag_player[0]) ? d.hostname_tag : d.hostname;
@@ -394,13 +403,40 @@ int BotTheater::TurnSide() const {
 	return mainGame->LocalPlayer(turn_player);	// follows the spectator swap button
 }
 
+// Split-zone tag duels: the half of the field the player taking this turn can use, as it
+// looks on screen: 0 = left, 1 = right, -1 = the whole field (any other duel).
+int BotTheater::TurnSection() const {
+	if(!SplitZones() || !mainGame->dInfo.isTag)
+		return -1;
+	int side = TurnSide();
+	if(side < 0)
+		return -1;
+	// A team's first player has its left three columns, the second its right three. The
+	// top player faces us, so their left is the right-hand side of the screen.
+	bool first = (tag_member[turn_player] == 0);
+	return (first == (side == 0)) ? 0 : 1;
+}
+
 void BotTheater::DrawTurnHighlight(int left, int top, int right, int bottom) const {
 	irr::video::SColor gold(255, 255, 200, 40);
-	int thickness = std::max(2, (int)(3 * mainGame->xScale));
-	for(int i = 1; i <= thickness; ++i) {	// drawn just outside the picture, so it isn't covered up
-		irr::core::recti frame(left - i, top - i, right + i, bottom + i);
-		mainGame->driver->draw2DRectangleOutline(frame, gold);
-	}
+	int t = std::max(2, (int)(3 * mainGame->xScale));
+	// The frame sits just outside the picture, so it isn't covered up. In split-zone tag duels
+	// it's cut off on the side of the field this player can't use, and only wraps the 3/5 of
+	// the portrait that matches their three columns (the middle column is shared).
+	int section = TurnSection();
+	int part = (right - left) * 3 / 5;
+	int from = left - t, to = right + t;
+	if(section == 0)
+		to = left + part;
+	else if(section == 1)
+		from = right - part;
+	irr::video::IVideoDriver* driver = mainGame->driver;
+	driver->draw2DRectangle(gold, irr::core::recti(from, top - t, to, top));			// top edge
+	driver->draw2DRectangle(gold, irr::core::recti(from, bottom, to, bottom + t));	// bottom edge
+	if(section != 1)
+		driver->draw2DRectangle(gold, irr::core::recti(left - t, top - t, left, bottom + t));	// left edge
+	if(section != 0)
+		driver->draw2DRectangle(gold, irr::core::recti(right, top - t, right + t, bottom + t));	// right edge
 }
 
 const wchar_t* BotTheater::TurnText() const {

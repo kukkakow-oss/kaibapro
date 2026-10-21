@@ -110,6 +110,8 @@ private:
 	int info_owner = -1;	// whose action the info window shows: 0 = bottom player, 1 = top
 	wchar_t turn_text[64] = {};
 	int turn_player = -1;	// turn player as the duel numbers them (not affected by swapping sides)
+	int tag_member[2] = { 0, 1 };	// tag duels: which teammate is playing for each duel player (0 = the team's first)
+	int TurnSection() const;	// split-zone tag duels: the half of the field the turn player can use
 
 	struct Hologram {
 		unsigned int code;
