@@ -97,6 +97,7 @@ void BotTheater::Load() {
 		else if(key == "hologram_backrow_lift_top") hologram_backrow_lift_top = ToInt(value, hologram_backrow_lift_top);
 		else if(key == "top_hand_raise") top_hand_raise = std::strtod(value.c_str(), nullptr);
 		else if(key == "split_zones") split_zones = ToInt(value, 0) != 0;
+		else if(key == "clockwise_tag") clockwise_tag = ToInt(value, 1) != 0;
 		else if(key == "random_backgrounds") random_backgrounds = ToInt(value, 1) != 0;
 		else if(key == "custom_background_field") custom_background_field = ToInt(value, 0) != 0;
 		else if(key == "tournament") tournament = ToInt(value, 0) != 0;
@@ -218,16 +219,26 @@ void BotTheater::Save() const {
 	std::fprintf(fp, "# Tag duels only: 1 = each team's first player may only place cards in the left\n");
 	std::fprintf(fp, "# section of the field and its second player in the right (middle zones shared)\n");
 	std::fprintf(fp, "split_zones = %d\n", split_zones ? 1 : 0);
+	std::fprintf(fp, "# Tag duels only: 1 = turns go clockwise round the table (bottom left, top left,\n");
+	std::fprintf(fp, "# top right, bottom right), so after the first turn each team plays twice in a row\n");
+	std::fprintf(fp, "clockwise_tag = %d\n", clockwise_tag ? 1 : 0);
 	std::fclose(fp);
 }
 
 void BotTheater::ApplyToHostWindow() {
 	if(!chkSplitZones) {
-		// Our own option, in the free row between "Cards per Draw" and "Host Name".
-		chkSplitZones = mainGame->env->addCheckBox(false, irr::core::rect<irr::s32>(20, 327, 360, 347),
-			mainGame->wCreateHost, -1, L"Split zones between teammates (tag duels)");
+		// Our own tag-duel options, in the free row between "Cards per Draw" and "Host Name".
+		chkSplitZones = mainGame->env->addCheckBox(false, irr::core::rect<irr::s32>(20, 327, 185, 347),
+			mainGame->wCreateHost, -1, L"Tag: split zones");
+		chkSplitZones->setToolTipText(L"Tag duels: each teammate may only place cards in their own half of the field "
+			L"(the middle column is shared).");
+		chkClockwise = mainGame->env->addCheckBox(false, irr::core::rect<irr::s32>(190, 327, 370, 347),
+			mainGame->wCreateHost, -1, L"Tag: clockwise turns");
+		chkClockwise->setToolTipText(L"Tag duels: turns go clockwise round the table (bottom left, top left, top right, "
+			L"bottom right), so after the first turn each team plays twice in a row.");
 	}
 	chkSplitZones->setChecked(split_zones);
+	chkClockwise->setChecked(clockwise_tag);
 	if(!chkTournament) {
 		// Tournament options, in the free space right of Start LP / Start Hand / Draw Count.
 		auto env = mainGame->env;
@@ -291,6 +302,8 @@ void BotTheater::ReadFromHostWindow() {
 	password = mainGame->ebServerPass->getText();
 	if(chkSplitZones)
 		split_zones = chkSplitZones->isChecked();
+	if(chkClockwise)
+		clockwise_tag = chkClockwise->isChecked();
 	if(chkTournament) {
 		tournament = chkTournament->isChecked();
 		int n = (int)std::wcstol(ebEntrants->getText(), nullptr, 10);
@@ -384,19 +397,19 @@ void BotTheater::OnCardAction(unsigned int code, int local_player) {
 void BotTheater::SetTurnPlayer(int local_player) {
 	turn_player = mainGame->LocalPlayer(local_player);	// back to the duel's own numbering
 	const auto& d = mainGame->dInfo;
-	// Which teammate is playing, kept the same way as the duel engine keeps it for the
-	// split-zone rule: the first turn starts with each team's starting player, then every
-	// new turn hands the turn player's team over to the other teammate.
+	// Which teammate is playing, kept the same way as the duel engine keeps it: the first
+	// turn starts with each team's starting player, then each new turn hands the turn
+	// player's team over to the other teammate (with the clockwise order, from turn 3 on).
 	if(d.turn <= 1) {
 		tag_member[0] = 0;
 		tag_member[1] = 1;
-	} else
+	} else if(d.turn >= FirstTagSwapTurn())
 		tag_member[turn_player] ^= 1;
 	const wchar_t* name;
-	if(local_player == 0)
-		name = (d.isTag && d.tag_player[0]) ? d.hostname_tag : d.hostname;
+	if(d.isTag)
+		name = SeatName(SeatOf(local_player, tag_member[turn_player]));
 	else
-		name = (d.isTag && d.tag_player[1]) ? d.clientname_tag : d.clientname;
+		name = (local_player == 0) ? d.hostname : d.clientname;
 	if(name && name[0])
 		myswprintf(turn_text, L"%ls's Turn", name);
 	else
@@ -427,13 +440,66 @@ int BotTheater::TurnSection() const {
 	return (first == (side == 0)) ? 0 : 1;
 }
 
+bool BotTheater::ClockwiseTurns() const {
+	const auto& d = mainGame->dInfo;
+	if(!d.isTag)
+		return false;
+	if(d.isReplay)
+		return replay_clockwise;
+	return ClockwiseTag();
+}
+
+// ---------------------------------------------------------------------------
+// Tag duels: four portraits. Seats 0 and 1 are the host's team and 2 and 3 the other
+// team; the lower seat of each team is its first player, who has the team's left half
+// of the field. The near team is at the bottom of the screen unless the sides have been
+// swapped, and the far team faces us, so its first player's half is on our right.
+
+bool BotTheater::TagPortraits() const {
+	return SpectatingBotRoom() && mainGame->dInfo.isTag && mainGame->dInfo.isStarted;
+}
+
+int BotTheater::SeatOf(int local_side, int member) const {
+	bool host_at_bottom = DuelClient::IsHostTeam() != mainGame->dInfo.isReplaySwapped;
+	bool host_team = (local_side == 0) == host_at_bottom;
+	return (host_team ? 0 : 2) + (member ? 1 : 0);
+}
+
+const wchar_t* BotTheater::SeatName(int seat) const {
+	const auto& d = mainGame->dInfo;
+	bool swapped = d.isReplaySwapped;	// swapping sides also swaps the stored names
+	switch(seat) {
+	case 0: return swapped ? d.clientname : d.hostname;
+	case 1: return swapped ? d.clientname_tag : d.hostname_tag;
+	case 2: return swapped ? d.hostname : d.clientname;
+	default: return swapped ? d.hostname_tag : d.clientname_tag;
+	}
+}
+
+// Row 0 shows the top side, row 1 the bottom side. A team's first player (member 0) is on
+// the left for the bottom team and on the right for the top team.
+static int PortraitSide(int row) { return row == 0 ? 1 : 0; }
+static int PortraitMember(int side, int column) { return side == 0 ? column : 1 - column; }
+
+int BotTheater::PortraitSeat(int row, int column) const {
+	int side = PortraitSide(row);
+	return SeatOf(side, PortraitMember(side, column));
+}
+
+bool BotTheater::PortraitActive(int row, int column) const {
+	int side = TurnSide();
+	if(side < 0 || side != PortraitSide(row))
+		return false;
+	return tag_member[turn_player] == PortraitMember(side, column);
+}
+
 void BotTheater::DrawTurnHighlight(int left, int top, int right, int bottom) const {
 	irr::video::SColor gold(255, 255, 200, 40);
 	int t = std::max(2, (int)(3 * mainGame->xScale));
 	// The frame sits just outside the picture, so it isn't covered up. In split-zone tag duels
 	// it's cut off on the side of the field this player can't use, and only wraps the 3/5 of
 	// the portrait that matches their three columns (the middle column is shared).
-	int section = TurnSection();
+	int section = TagPortraits() ? -1 : TurnSection();	// four portraits: each one is a single player
 	int part = (right - left) * 3 / 5;
 	int from = left - t, to = right + t;
 	if(section == 0)

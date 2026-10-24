@@ -593,7 +593,7 @@ void Game::DrawMisc() {
 	DrawShadowText(numFont, dInfo.strLP[0], Resize(330, 12, 631, 30), Resize(0, 1, 2, 0), mainGame->playerlpcolor, 0xff000000, true, false, 0);
 	DrawShadowText(numFont, dInfo.strLP[1], Resize(691, 12, 992, 30), Resize(0, 1, 2, 0), mainGame->playerlpcolor, 0xff000000, true, false, 0);
 
-	if(!gameConf.hide_player_name) {
+	if(!gameConf.hide_player_name && !botTheater.TagPortraits()) {	// Bot Theater: tag portraits have their own names
 		irr::core::recti p1size = Resize(416, 31, 815, 50);
 		irr::core::recti p2size = Resize(905, 31, 906, 50);
 		if(!dInfo.isTag || !dInfo.tag_player[0])
@@ -1391,6 +1391,47 @@ static void DrawPlayerBorder(irr::video::IVideoDriver* driver, irr::core::recti 
 }
 void Game::DrawAvatars()
 {
+	// Bot Theater: tag duels show all four duelists, each on the side of the screen where
+	// their half of the field is: the far team in the top row, the near team below it.
+	// The gold frame marks whoever's turn it is.
+	if (botTheater.TagPortraits())
+	{
+		irr::core::position2di size = mainGame->Resize(69, 69);
+		for (int row = 0; row < 2; ++row)
+		{
+			for (int column = 0; column < 2; ++column)
+			{
+				int seat = botTheater.PortraitSeat(row, column);
+				irr::core::position2di pos = mainGame->Resize(column == 0 ? 332 : 987, row == 0 ? 30 : 103);
+				pos.Y += 3;
+				DrawPlayerAvatar(driver, irr::core::vector2di(pos.X, pos.Y), seat, column == 1);
+				if (column == 1)
+					pos.X -= size.X;
+				if (botTheater.PortraitActive(row, column))
+					botTheater.DrawTurnHighlight(pos.X, pos.Y, pos.X + size.X, pos.Y + size.Y);
+				if (gameConf.hide_player_name)
+					continue;
+				// Names beside the portraits: the top row's under the Life Points bars as usual,
+				// the bottom row's kept clear of the far player's hand.
+				const wchar_t* name = botTheater.SeatName(seat);
+				int top = (row == 0) ? 31 : 106;
+				irr::core::recti box, clip;
+				if (column == 0)
+				{
+					box = Resize(416, top, 815, top + 19);
+					clip = Resize(416, top, row == 0 ? 815 : 535, top + 19);
+				}
+				else
+				{
+					box = Resize(905, top, 906, top + 19);
+					box.UpperLeftCorner.X -= textFont->getDimension(name).Width;
+					clip = Resize(row == 0 ? 500 : 795, top, 906, top + 19);
+				}
+				textFont->drawUstring(name, box, mainGame->usernamecolor, false, false, &clip);
+			}
+		}
+		return;
+	}
 	int trueIds[4];
 	bool isHostTeam = DuelClient::IsHostTeam();
 	if (dInfo.isTag)
@@ -1430,6 +1471,8 @@ void Game::DrawAvatars()
 }
 void Game::DrawRanks()
 {
+	if (botTheater.TagPortraits())	// Bot Theater: no room for ranks beside the four tag portraits
+		return;
 	int trueIds[4];
 	bool isHostTeam = DuelClient::IsHostTeam();
 	if (dInfo.isTag)

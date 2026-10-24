@@ -2,6 +2,7 @@
 #include "duelclient.h"
 #include "game.h"
 #include "data_manager.h"
+#include "bot_theater.h"
 #include "../ocgcore/mtrandom.h"
 #include <thread>
 
@@ -173,6 +174,7 @@ bool ReplayMode::StartDuel() {
 	int draw_count = cur_replay.ReadInt32();
 	int opt = cur_replay.ReadInt32();
 	int duel_rule = opt >> 16;
+	botTheater.replay_clockwise = (opt & DUEL_CLOCKWISE_TAG) != 0;	// Bot Theater: tag turns went clockwise
 	mainGame->dInfo.duel_rule = duel_rule;
 	set_player_info(pduel, 0, start_lp, start_hand, draw_count);
 	set_player_info(pduel, 1, start_lp, start_hand, draw_count);

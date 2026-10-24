@@ -2525,7 +2525,9 @@ bool DuelClient::ClientAnalyze(unsigned char* msg, int len) {
 				mainGame->btnCancelOrFinish->setVisible(false);
 			}
 		}
-		if(mainGame->dInfo.isTag && mainGame->dInfo.turn != 1) {
+		// The other teammate takes over at every new turn but the first (Bot Theater's
+		// clockwise tag order: from the third turn on, as the second team's starting player plays turn 2).
+		if(mainGame->dInfo.isTag && mainGame->dInfo.turn >= botTheater.FirstTagSwapTurn()) {
 			if(player == 0)
 				mainGame->dInfo.tag_player[0] = !mainGame->dInfo.tag_player[0];
 			else

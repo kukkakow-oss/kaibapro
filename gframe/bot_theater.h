@@ -41,6 +41,7 @@ public:
 	int hologram_backrow_lift_top = 125;	// top player's back row (sits behind its monster row, so it floats higher)
 	double top_hand_raise = 1.0;		// card heights to raise the top player's hand by
 	bool split_zones = false;			// tag duels: each teammate has their own section of the field
+	bool clockwise_tag = true;			// tag duels: turns go clockwise round the table (each team plays twice in a row)
 	bool random_backgrounds = true;		// pick each duel's background from textures/backgrounds
 	bool custom_background_field = false;	// still draw the field overlay (field2/field3.png) over custom backgrounds
 	bool tournament = false;			// each Host plays the next match of the tournament, and the next one follows by itself
@@ -79,6 +80,17 @@ public:
 	bool InfoFollowsActions() const;
 	bool SkipEndPrompts() const;
 	bool SplitZones() const { return active && split_zones; }
+	bool ClockwiseTag() const { return active && clockwise_tag; }	// for the host's duel settings
+	bool ClockwiseTurns() const;	// the duel being shown (live or replay) uses the clockwise tag order
+	int FirstTagSwapTurn() const { return ClockwiseTurns() ? 3 : 2; }	// first turn on which a new teammate takes over
+	bool replay_clockwise = false;	// set by the replay player from the replay's duel settings
+	// Tag duels: all four duelists' portraits, each on the side of the screen where their half
+	// of the field is. Row 0 = the top (far) team, row 1 = the bottom (near) team;
+	// column 0 = left, 1 = right.
+	bool TagPortraits() const;
+	int PortraitSeat(int row, int column) const;	// lobby seat (0-3) of the duelist shown there
+	bool PortraitActive(int row, int column) const;	// it's this duelist's turn (and turn_highlight is on)
+	const wchar_t* SeatName(int seat) const;
 	void OnCardAction(unsigned int code, int local_player);
 	void OnDuelStart();
 	void SetTurnPlayer(int local_player);
@@ -116,6 +128,7 @@ private:
 	int tag_member[2] = { 0, 1 };	// tag duels: which teammate is playing for each duel player (0 = the team's first)
 	int TurnSection() const;	// split-zone tag duels: the half of the field the turn player can use
 	int CurrentTurnSide() const;	// like TurnSide(), whatever the turn_highlight setting
+	int SeatOf(int local_side, int member) const;	// tag duels: lobby seat of a side's first (0) or second (1) player
 	irr::video::ITexture* tTurnGlow = nullptr;
 	void MakeTurnGlowTexture();
 
@@ -130,6 +143,7 @@ private:
 	};
 	std::vector<Hologram> holograms;
 	irr::gui::IGUICheckBox* chkSplitZones = nullptr;	// added to the host window
+	irr::gui::IGUICheckBox* chkClockwise = nullptr;
 	irr::gui::IGUICheckBox* chkTournament = nullptr;
 	irr::gui::IGUIEditBox* ebEntrants = nullptr;
 	irr::gui::IGUIComboBox* cbFormat = nullptr;

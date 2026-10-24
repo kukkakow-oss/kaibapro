@@ -420,6 +420,8 @@ void TagDuel::TPResult(DuelPlayer* dp, unsigned char tp) {
 	opt |= DUEL_TAG_MODE;
 	if(botTheater.SplitZones())
 		opt |= DUEL_SPLIT_ZONES;	// Bot Theater: each teammate has their own section of the field
+	if(botTheater.ClockwiseTag())
+		opt |= DUEL_CLOCKWISE_TAG;	// Bot Theater: turns go clockwise round the table
 	last_replay.WriteInt32(host_info.start_lp, false);
 	last_replay.WriteInt32(host_info.start_hand, false);
 	last_replay.WriteInt32(host_info.draw_count, false);
@@ -912,19 +914,8 @@ int TagDuel::Analyze(unsigned char* msgbuffer, unsigned int len) {
 			NetServer::ReSendToPlayer(players[3]);
 			for(auto oit = observers.begin(); oit != observers.end(); ++oit)
 				NetServer::ReSendToPlayer(*oit);
-			if(turn_count > 0) {
-				if(turn_count % 2 == 0) {
-					if(cur_player[0] == players[0])
-						cur_player[0] = players[1];
-					else
-						cur_player[0] = players[0];
-				} else {
-					if(cur_player[1] == players[2])
-						cur_player[1] = players[3];
-					else
-						cur_player[1] = players[2];
-				}
-			}
+			// Bot Theater: which teammate plays now is updated when the engine says so
+			// (MSG_TAG_SWAP), so it stays right whatever order the turns go in.
 			turn_count++;
 			for(int i = 0; i < 4; ++i) {
 				surrender[i] = false;
@@ -1484,6 +1475,9 @@ int TagDuel::Analyze(unsigned char* msgbuffer, unsigned int len) {
 		}
 		case MSG_TAG_SWAP: {
 			player = BufferIO::ReadUInt8(pbuf);
+			// The engine has handed this side over to the other teammate (it follows straight
+			// after MSG_NEW_TURN), so they get the full message below.
+			cur_player[player] = (cur_player[player] == players[player * 2]) ? players[player * 2 + 1] : players[player * 2];
 			/*int mcount = */BufferIO::ReadUInt8(pbuf);
 			int ecount = BufferIO::ReadUInt8(pbuf);
 			/*int pcount = */BufferIO::ReadUInt8(pbuf);
