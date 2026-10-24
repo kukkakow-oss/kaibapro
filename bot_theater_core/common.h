@@ -414,6 +414,7 @@ inline bool check_playerid(int32_t playerid) {
 #define DUEL_RETURN_DECK_TOP	0x80
 #define DUEL_REVEAL_DECK_SEQ	0x100
 #define DUEL_SPLIT_ZONES		0x4000	// Bot Theater: in tag duels, each teammate may only place cards in their own section of the field
+#define DUEL_CLOCKWISE_TAG		0x8000	// Bot Theater: tag duel turns go clockwise round the table, so each team plays twice in a row
 
 //Activity
 #define ACTIVITY_SUMMON			1
