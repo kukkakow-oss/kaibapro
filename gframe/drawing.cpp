@@ -119,7 +119,17 @@ void Game::DrawBackGround() {
 				drawField = true;
 				matManager.mTexture.setTexture(0, texture);
 				driver->setMaterial(matManager.mTexture);
-				driver->drawVertexPrimitiveList(matManager.vFieldSpell, 4, matManager.iRectangle, 2);
+				if(fieldcode1 <= 0) {
+					// Bot Theater: only the far side has a Field Spell, so its art faces that
+					// player, turned round like the far half when both sides have one.
+					irr::video::S3DVertex turned[4];
+					for(int i = 0; i < 4; ++i) {
+						turned[i] = matManager.vFieldSpell[i];
+						turned[i].TCoords.set(1.0f - turned[i].TCoords.X, 1.0f - turned[i].TCoords.Y);
+					}
+					driver->drawVertexPrimitiveList(turned, 4, matManager.iRectangle, 2);
+				} else
+					driver->drawVertexPrimitiveList(matManager.vFieldSpell, 4, matManager.iRectangle, 2);
 			}
 		}
 	}
