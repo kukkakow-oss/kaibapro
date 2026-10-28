@@ -98,20 +98,33 @@ void Game::DrawBackGround() {
 		if(dField.szone[1][5] && dField.szone[1][5]->position & POS_FACEUP)
 			fieldcode2 = dField.szone[1][5]->code;
 		int fieldcode = (fieldcode1 > 0) ? fieldcode1 : fieldcode2;
-		if(fieldcode1 > 0 && fieldcode2 > 0 && fieldcode1 != fieldcode2) {
+		// Bot Theater: the near side's Field Spell art is always turned round (180 degrees) and the
+		// far side's is always the right way up. When both sides have one (even the same card),
+		// each gets its own half of the field.
+		auto drawTurned = [&](const irr::video::S3DVertex* quad) {
+			// Same picture area, rotated about its centre: corners 0 and 3 are opposite.
+			float u = quad[0].TCoords.X + quad[3].TCoords.X, v = quad[0].TCoords.Y + quad[3].TCoords.Y;
+			irr::video::S3DVertex turned[4];
+			for(int i = 0; i < 4; ++i) {
+				turned[i] = quad[i];
+				turned[i].TCoords.set(u - quad[i].TCoords.X, v - quad[i].TCoords.Y);
+			}
+			driver->drawVertexPrimitiveList(turned, 4, matManager.iRectangle, 2);
+		};
+		if(fieldcode1 > 0 && fieldcode2 > 0) {
 			auto texture = imageManager.GetTextureField(fieldcode1);
 			if(texture) {
 				drawField = true;
 				matManager.mTexture.setTexture(0, texture);
 				driver->setMaterial(matManager.mTexture);
-				driver->drawVertexPrimitiveList(matManager.vFieldSpell1, 4, matManager.iRectangle, 2);
+				drawTurned(matManager.vFieldSpell1);	// near half, turned round
 			}
 			texture = imageManager.GetTextureField(fieldcode2);
 			if(texture) {
 				drawField = true;
 				matManager.mTexture.setTexture(0, texture);
 				driver->setMaterial(matManager.mTexture);
-				driver->drawVertexPrimitiveList(matManager.vFieldSpell2, 4, matManager.iRectangle, 2);
+				drawTurned(matManager.vFieldSpell2);	// far half: the game turns it, so this puts it the right way up
 			}
 		} else if(fieldcode > 0) {
 			auto texture = imageManager.GetTextureField(fieldcode);
@@ -119,16 +132,9 @@ void Game::DrawBackGround() {
 				drawField = true;
 				matManager.mTexture.setTexture(0, texture);
 				driver->setMaterial(matManager.mTexture);
-				if(fieldcode1 <= 0) {
-					// Bot Theater: only the far side has a Field Spell, so its art faces that
-					// player, turned round like the far half when both sides have one.
-					irr::video::S3DVertex turned[4];
-					for(int i = 0; i < 4; ++i) {
-						turned[i] = matManager.vFieldSpell[i];
-						turned[i].TCoords.set(1.0f - turned[i].TCoords.X, 1.0f - turned[i].TCoords.Y);
-					}
-					driver->drawVertexPrimitiveList(turned, 4, matManager.iRectangle, 2);
-				} else
+				if(fieldcode1 > 0)
+					drawTurned(matManager.vFieldSpell);	// only the near side has one
+				else
 					driver->drawVertexPrimitiveList(matManager.vFieldSpell, 4, matManager.iRectangle, 2);
 			}
 		}
