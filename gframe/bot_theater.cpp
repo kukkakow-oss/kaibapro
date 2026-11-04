@@ -18,6 +18,11 @@
 #include <cstring>
 #include <cwchar>
 #include <vector>
+#include <atomic>
+#include <thread>
+#ifdef _WIN32
+#include <dbghelp.h>
+#endif
 
 namespace ygo {
 
@@ -1257,7 +1262,109 @@ void BotTheater::PlacePhaseBar() {
 		mainGame->wPhase->setRelativePosition(wanted);
 }
 
+// ---------------------------------------------------------------------------
+// Freeze reports. A background thread watches the frame count; if a duel is on
+// screen and no frame has been drawn for FREEZE_SECONDS, it writes
+// bot_theater_freeze.log (what the duel was doing) and bot_theater_freeze.dmp
+// (a snapshot of every part of the game, to read with the build's YGOPro.pdb).
+
+static const int FREEZE_SECONDS = 15;
+static const int TRACE_SIZE = 40;
+static std::atomic<unsigned> frames_drawn{ 0 };
+struct MessageTrace {
+	std::atomic<unsigned> next{ 0 };
+	std::atomic<int> msg[TRACE_SIZE];
+	std::atomic<unsigned long long> when[TRACE_SIZE];
+};
+static MessageTrace client_trace, server_trace;
+
+void BotTheater::NoteMessage(int msg, bool server) {
+	MessageTrace& t = server ? server_trace : client_trace;
+	unsigned i = t.next.fetch_add(1) % TRACE_SIZE;
+	t.msg[i].store(msg);
+	t.when[i].store(NowMs());
+}
+
+#ifdef _WIN32
+static void WriteTrace(FILE* fp, const char* who, MessageTrace& t, unsigned long long now) {
+	unsigned count = t.next.load();
+	std::fprintf(fp, "  Last duel messages %s (oldest first, seconds before the report):\n   ", who);
+	unsigned first = count > (unsigned)TRACE_SIZE ? count - TRACE_SIZE : 0;
+	for(unsigned k = first; k < count; ++k) {
+		unsigned i = k % TRACE_SIZE;
+		std::fprintf(fp, " %d(%.1f)", t.msg[i].load(), ((long long)now - (long long)t.when[i].load()) / 1000.0);
+	}
+	std::fprintf(fp, count ? "\n" : " none\n");
+}
+
+static void WriteFreezeReport() {
+	unsigned long long now = NowMs();
+	FILE* fp = std::fopen("bot_theater_freeze.log", "a");
+	if(fp) {
+		char stamp[40];
+		std::time_t t = std::time(nullptr);
+		std::strftime(stamp, sizeof stamp, "%Y-%m-%d %H:%M:%S", std::localtime(&t));
+		const auto& d = mainGame->dInfo;
+		std::fprintf(fp, "[%s] The game stopped drawing for %d seconds.\n", stamp, FREEZE_SECONDS);
+		std::fprintf(fp, "  Turn %d, LP %d / %d, tag %d, message being handled: %d\n",
+			d.turn, d.lp[0], d.lp[1], d.isTag ? 1 : 0, (int)d.curMsg);
+		// If the drawing lock is free, the frame loop is stuck somewhere other than waiting for it.
+		if(mainGame->gMutex.try_lock()) {
+			mainGame->gMutex.unlock();
+			std::fprintf(fp, "  The game's drawing lock was free.\n");
+		} else
+			std::fprintf(fp, "  The game's drawing lock was taken.\n");
+		WriteTrace(fp, "the screen received", client_trace, now);
+		WriteTrace(fp, "the duel engine sent", server_trace, now);
+	}
+	bool dumped = false;
+	HMODULE dbghelp = LoadLibraryW(L"dbghelp.dll");
+	if(dbghelp) {
+		typedef BOOL(WINAPI* WriteDumpFn)(HANDLE, DWORD, HANDLE, MINIDUMP_TYPE, PMINIDUMP_EXCEPTION_INFORMATION,
+			PMINIDUMP_USER_STREAM_INFORMATION, PMINIDUMP_CALLBACK_INFORMATION);
+		WriteDumpFn write_dump = (WriteDumpFn)GetProcAddress(dbghelp, "MiniDumpWriteDump");
+		HANDLE file = CreateFileW(L"bot_theater_freeze.dmp", GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if(write_dump && file != INVALID_HANDLE_VALUE) {
+			MINIDUMP_TYPE type = (MINIDUMP_TYPE)(MiniDumpWithDataSegs | MiniDumpWithIndirectlyReferencedMemory
+				| MiniDumpWithThreadInfo | MiniDumpWithHandleData | MiniDumpWithUnloadedModules);
+			dumped = write_dump(GetCurrentProcess(), GetCurrentProcessId(), file, type, nullptr, nullptr, nullptr) != FALSE;
+		}
+		if(file != INVALID_HANDLE_VALUE)
+			CloseHandle(file);
+	}
+	if(fp) {
+		std::fprintf(fp, dumped ? "  Snapshot saved to bot_theater_freeze.dmp\n\n" : "  Couldn't save a snapshot.\n\n");
+		std::fclose(fp);
+	}
+}
+
+static void FreezeWatch() {
+	unsigned last = frames_drawn.load();
+	int still = 0;
+	for(;;) {
+		std::this_thread::sleep_for(std::chrono::seconds(1));
+		unsigned now = frames_drawn.load();
+		if(now != last) {
+			last = now;
+			still = 0;
+			continue;
+		}
+		// Only while a duel is on screen; one report per freeze.
+		if(++still == FREEZE_SECONDS && mainGame->dInfo.isStarted)
+			WriteFreezeReport();
+	}
+}
+#endif
+
 void BotTheater::Tick() {
+	frames_drawn.fetch_add(1);
+#ifdef _WIN32
+	static bool watching = false;
+	if(!watching) {
+		watching = true;
+		std::thread(FreezeWatch).detach();
+	}
+#endif
 	PlacePhaseBar();
 	int code = 0;
 	if(script_process && PollScript(code)) {

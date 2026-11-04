@@ -112,6 +112,7 @@ public:
 	void OnDuelWin(int side);	// MSG_WIN: 0 = bottom player/team won, 1 = top, -1 = draw
 	void OnRoomEnd();			// the room closed after its duel or match
 	void Tick();				// every frame, after the GUI is drawn (GUI lock held)
+	void NoteMessage(int msg, bool server = false);	// freeze reports: the duel messages handled last
 	void AfterFrame();			// every frame, after the GUI lock is released
 	bool OnKey(int key, bool pressed);	// keys while the between-matches panel is up
 

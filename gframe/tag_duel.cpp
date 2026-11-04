@@ -547,6 +547,7 @@ int TagDuel::Analyze(unsigned char* msgbuffer, unsigned int len) {
 	while (pbuf - msgbuffer < (int)len) {
 		offset = pbuf;
 		unsigned char engType = BufferIO::ReadUInt8(pbuf);
+		botTheater.NoteMessage(engType, true);	// Bot Theater: for freeze reports
 		switch (engType) {
 		case MSG_RETRY: {
 			WaitforResponse(last_response);
