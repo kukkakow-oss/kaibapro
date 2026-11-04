@@ -181,6 +181,19 @@ jobs:
             files { "miniaudio_impl.c" }
         '@
 
+    - name: Include debugging symbols (YGOPro.pdb)
+      run: |
+        # Also build YGOPro.pdb, and keep frame pointers, so a freeze report
+        # (bot_theater_freeze.dmp) can be traced back to the exact code.
+        Add-Content premake5.lua @'
+
+        workspace "YGOPro"
+            filter { "configurations:Release", "action:vs*" }
+                symbols "On"
+                omitframepointer "Off"
+            filter {}
+        '@
+
     - name: Use premake to generate Visual Studio solution (2022)
       run: |
         .\premake5.exe vs2022 --no-use-irrklang
@@ -198,3 +211,4 @@ jobs:
         name: YGOPro-BotTheater
         path: |
           bin/release/YGOPro.exe
+          bin/release/YGOPro.pdb
