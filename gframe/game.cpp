@@ -78,6 +78,7 @@ bool Game::Initialize() {
 	else
 		params.DriverType = irr::video::EDT_OPENGL;
 	params.WindowSize = irr::core::dimension2d<irr::u32>(gameConf.window_width, gameConf.window_height);
+	params.DriverMultithreaded = true;	// Bot Theater: let Direct3D 9 guard itself if any other thread uses it
 	device = irr::createDeviceEx(params);
 	if(!device) {
 		ErrorLog("Failed to create Irrlicht Engine device!");

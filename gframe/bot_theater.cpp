@@ -393,9 +393,12 @@ bool BotTheater::InfoFollowsActions() const {
 void BotTheater::OnCardAction(unsigned int code, int local_player) {
 	if(!code || !InfoFollowsActions())
 		return;
+	// Called from the network thread. Showing the card can load its picture, which uses the
+	// graphics device, and Direct3D 9 must only be used from the drawing thread (doing it here
+	// could hang the game inside the graphics driver). So the next frame shows it (Tick).
 	mainGame->gMutex.lock();
-	mainGame->ShowCardInfo(code);
-	info_owner = local_player;
+	pending_info_code = code;
+	pending_info_owner = local_player;
 	mainGame->gMutex.unlock();
 }
 
@@ -570,6 +573,7 @@ static std::wstring FindAvatar(const wchar_t* name) {
 void BotTheater::OnDuelStart() {
 	// Called when a duel starts, with the game's GUI lock already held.
 	info_owner = -1;
+	pending_info_code = 0;
 	turn_text[0] = 0;
 	turn_player = -1;
 	holograms.clear();
@@ -1366,6 +1370,11 @@ void BotTheater::Tick() {
 	}
 #endif
 	PlacePhaseBar();
+	if(pending_info_code) {		// the info window follows the duel (see OnCardAction)
+		mainGame->ShowCardInfo(pending_info_code);
+		info_owner = pending_info_owner;
+		pending_info_code = 0;
+	}
 	int code = 0;
 	if(script_process && PollScript(code)) {
 		int kind = script_kind;

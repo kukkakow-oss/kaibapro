@@ -124,6 +124,8 @@ private:
 	bool room_is_tag = false;
 	std::wstring room_password;
 	int info_owner = -1;	// whose action the info window shows: 0 = bottom player, 1 = top
+	unsigned int pending_info_code = 0;	// card for the info window, shown by the next frame (GUI lock)
+	int pending_info_owner = -1;
 	wchar_t turn_text[64] = {};
 	int turn_player = -1;	// turn player as the duel numbers them (not affected by swapping sides)
 	int tag_member[2] = { 0, 1 };	// tag duels: which teammate is playing for each duel player (0 = the team's first)
