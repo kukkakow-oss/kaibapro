@@ -664,7 +664,8 @@ int32_t field::is_location_useable_split(uint8_t playerid, uint32_t general_loca
 /**
 * Split-zone tag rule (DUEL_SPLIT_ZONES): whether `pcard` sits in a zone that belongs to the
 * teammate now playing for its controller (their own section, or a shared zone). Only that
-* teammate may declare attacks with the monsters there or use those cards' Ignition Effects.
+* teammate may declare attacks with the monsters there, change their battle positions
+* (including Flip Summons) or use those cards' Ignition Effects.
 * Cards that aren't in a Monster or Spell/Trap Zone, and every card when the rule is off, count.
 */
 int32_t field::is_in_own_split_section(card* pcard) const {

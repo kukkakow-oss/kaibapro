@@ -2182,6 +2182,8 @@ int32_t field::process_idle_command(uint16_t step) {
 		}
 		core.repositionable_cards.clear();
 		for(auto& pcard : player[infos.turn_player].list_mzone) {
+			if(pcard && !is_in_own_split_section(pcard))
+				continue;	// split-zone tag rule: only card effects can change the other teammate's monsters
 			if(pcard && ((pcard->is_position(POS_FACEUP | POS_FACEDOWN_ATTACK) && pcard->is_capable_change_position(infos.turn_player))
 		        || (pcard->is_position(POS_FACEDOWN) && pcard->is_can_be_flip_summoned(infos.turn_player))))
 				core.repositionable_cards.push_back(pcard);
