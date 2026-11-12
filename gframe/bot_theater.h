@@ -8,6 +8,7 @@
 // Settings live in bot_theater.conf, separate from system.conf, because the
 // original game rewrites system.conf and would drop settings it doesn't know.
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -106,6 +107,11 @@ public:
 	void MapTopHandPoint(int& x, int& y) const;	// mouse position -> where the hand would normally be
 	void DrawTurnHighlight(int left, int top, int right, int bottom) const;
 	void DrawTurnGlow();	// drawing code only: straight after the field, before any cards
+	// Field Spell backdrops: textures/fbg/<code>_a (far half) and <code>_b (near half) fill that
+	// half of the screen, over the background and under everything else, fading out near the
+	// middle. Pass each side's face-up Field Spell (or null); *_drawn says whether that side has
+	// a backdrop (so its usual 3D art should be skipped). Drawing code only.
+	void DrawFieldBackdrops(ClientCard* near_card, ClientCard* far_card, bool& near_drawn, bool& far_drawn);
 	void ShowWindowAfterRoom() const;
 
 	// Tournaments
@@ -134,6 +140,23 @@ private:
 	int SeatOf(int local_side, int member) const;	// tag duels: lobby seat of a side's first (0) or second (1) player
 	irr::video::ITexture* tTurnGlow = nullptr;
 	void MakeTurnGlowTexture();
+
+	// Field Spell backdrops. [0] = near half (bottom, "_b"), [1] = far half (top, "_a").
+	struct Backdrop {
+		unsigned int code = 0;	// card whose picture this is (0 = none)
+		int alpha = 0;			// 0-255: fades in when the Field Spell appears, out when it goes
+	};
+	Backdrop backdrop_now[2], backdrop_old[2];	// the one showing, and the one fading out
+	struct BackdropImages {
+		irr::video::ITexture* tex[2] = { nullptr, nullptr };
+		bool tried[2] = { false, false };	// looked for the file already
+		unsigned long long last_used = 0;
+	};
+	std::map<unsigned int, BackdropImages> backdrop_cache;	// by card code
+	unsigned long long backdrop_clock = 0;
+	irr::video::ITexture* BackdropTexture(unsigned int code, int side);
+	void FreeOldBackdrops();
+	void DrawBackdrop(irr::video::ITexture* tex, int side, int alpha);
 
 	struct Hologram {
 		unsigned int code;

@@ -574,6 +574,10 @@ void BotTheater::OnDuelStart() {
 	// Called when a duel starts, with the game's GUI lock already held.
 	info_owner = -1;
 	pending_info_code = 0;
+	for(int side = 0; side < 2; ++side) {	// no Field Spell backdrops carried over from the last duel
+		backdrop_now[side] = Backdrop();
+		backdrop_old[side] = Backdrop();
+	}
 	turn_text[0] = 0;
 	turn_player = -1;
 	holograms.clear();
@@ -1029,6 +1033,141 @@ void BotTheater::PickBackground() {
 		last_background = files[pick];
 	}
 	background_pending = true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Field Spell backdrops (textures/fbg/<passcode>_a and _b, .png or .jpg)
+
+static const int BACKDROP_FADE_BAND = 12;		// percent of the screen height, centred on the middle,
+												// over which a backdrop fades out
+static const int BACKDROP_FADE_STEP = 16;		// alpha per frame when one appears or goes (about 1/4 s)
+static const size_t BACKDROP_CACHE_CARDS = 6;	// pictures kept loaded for cards not on the field
+
+irr::video::ITexture* BotTheater::BackdropTexture(unsigned int code, int side) {
+	if(code == 0)
+		return nullptr;
+	BackdropImages& images = backdrop_cache[code];
+	images.last_used = ++backdrop_clock;
+	if(!images.tried[side]) {
+		images.tried[side] = true;
+		const wchar_t* suffix = (side == 1) ? L"_a" : L"_b";
+		const wchar_t* extensions[] = { L".png", L".jpg" };
+		for(const wchar_t* ext : extensions) {
+			wchar_t path[256];
+			myswprintf(path, L"textures/fbg/%u%ls%ls", code, suffix, ext);
+			if(!FileSystem::IsFileExists(path))
+				continue;	// checked first, so a missing picture doesn't fill the log every frame
+			images.tex[side] = mainGame->driver->getTexture(path);
+			if(images.tex[side])
+				break;
+		}
+		if(images.tex[side])
+			FreeOldBackdrops();
+	}
+	return images.tex[side];
+}
+
+void BotTheater::FreeOldBackdrops() {
+	// Each picture takes several MB of video memory, so only keep a few for cards that have left.
+	for(;;) {
+		size_t loaded = 0;
+		auto oldest = backdrop_cache.end();
+		for(auto it = backdrop_cache.begin(); it != backdrop_cache.end(); ++it) {
+			if(!it->second.tex[0] && !it->second.tex[1])
+				continue;
+			++loaded;
+			bool showing = false;
+			for(int side = 0; side < 2; ++side)
+				if(backdrop_now[side].code == it->first || backdrop_old[side].code == it->first)
+					showing = true;
+			if(!showing && (oldest == backdrop_cache.end() || it->second.last_used < oldest->second.last_used))
+				oldest = it;
+		}
+		if(loaded <= BACKDROP_CACHE_CARDS || oldest == backdrop_cache.end())
+			return;
+		for(int side = 0; side < 2; ++side)
+			if(oldest->second.tex[side])
+				mainGame->driver->removeTexture(oldest->second.tex[side]);
+		backdrop_cache.erase(oldest);
+	}
+}
+
+// One backdrop: side 1 (far) fills the top half of the screen, side 0 (near) the bottom half.
+// It reaches a little past the middle and fades out across a band centred on it, so it blends
+// into the background or the other side's backdrop. The picture keeps its proportions: when it
+// is wider than the area, the extra is cut off its right-hand side (taller: top and bottom equally).
+void BotTheater::DrawBackdrop(irr::video::ITexture* tex, int side, int alpha) {
+	if(!tex || alpha <= 0)
+		return;
+	irr::core::recti screen = mainGame->Resize(0, 0, 1024, 640);
+	int height = screen.getHeight();
+	int mid = screen.UpperLeftCorner.Y + height / 2;
+	int band = std::max(1, height * BACKDROP_FADE_BAND / 200);	// half the fade band
+	int top = (side == 1) ? screen.UpperLeftCorner.Y : mid - band;
+	int bottom = (side == 1) ? mid + band : screen.LowerRightCorner.Y;
+	if(bottom <= top)
+		return;
+	irr::core::dimension2du size = tex->getOriginalSize();
+	double area_aspect = (double)screen.getWidth() / (bottom - top);
+	double use_w = size.Width, use_h = size.Height;
+	if(use_w / use_h > area_aspect)
+		use_w = use_h * area_aspect;
+	else
+		use_h = use_w / area_aspect;
+	int sx0 = 0, sx1 = (int)use_w;	// keep the left-hand edge
+	int sy0 = (int)((size.Height - use_h) / 2), sy1 = sy0 + (int)use_h;
+	auto source_y = [&](int y) { return sy0 + (int)((long long)(y - top) * (sy1 - sy0) / (bottom - top)); };
+	irr::video::SColor solid(alpha, 255, 255, 255), clear(0, 255, 255, 255);
+	auto draw = [&](int y0, int y1, irr::video::SColor upper, irr::video::SColor lower) {
+		if(y1 <= y0)
+			return;
+		irr::core::recti dest(screen.UpperLeftCorner.X, y0, screen.LowerRightCorner.X, y1);
+		irr::core::recti source(sx0, source_y(y0), sx1, source_y(y1));
+		irr::video::SColor colors[4] = { upper, lower, lower, upper };	// upper left, lower left, lower right, upper right
+		mainGame->driver->draw2DImage(tex, dest, source, nullptr, colors, true);
+	};
+	if(side == 1) {
+		draw(top, mid - band, solid, solid);
+		draw(mid - band, mid + band, solid, clear);
+	} else {
+		draw(mid - band, mid + band, clear, solid);
+		draw(mid + band, bottom, solid, solid);
+	}
+}
+
+void BotTheater::DrawFieldBackdrops(ClientCard* near_card, ClientCard* far_card, bool& near_drawn, bool& far_drawn) {
+	ClientCard* cards[2] = { near_card, far_card };
+	bool* drawn[2] = { &near_drawn, &far_drawn };
+	for(int side = 0; side < 2; ++side) {
+		// The picture for this side's Field Spell, if there is one (alternative artworks use the original's).
+		unsigned int code = 0;
+		ClientCard* pcard = cards[side];
+		if(pcard) {
+			if(BackdropTexture(pcard->code, side))
+				code = pcard->code;
+			else if(pcard->alias && BackdropTexture(pcard->alias, side))
+				code = pcard->alias;
+		}
+		*drawn[side] = (code != 0);
+		Backdrop& now = backdrop_now[side];
+		Backdrop& old = backdrop_old[side];
+		if(code != now.code) {
+			old = now;	// the previous one fades out
+			now.code = code;
+			now.alpha = 0;
+		}
+		if(now.code)
+			now.alpha = std::min(255, now.alpha + BACKDROP_FADE_STEP);
+		if(old.code) {
+			old.alpha -= BACKDROP_FADE_STEP;
+			if(old.alpha <= 0)
+				old = Backdrop();
+		}
+		if(old.code)
+			DrawBackdrop(BackdropTexture(old.code, side), side, old.alpha);
+		if(now.code)
+			DrawBackdrop(BackdropTexture(now.code, side), side, now.alpha);
+	}
 }
 
 irr::video::ITexture* BotTheater::DuelBackground() {

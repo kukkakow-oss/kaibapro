@@ -87,15 +87,29 @@ void Game::DrawBackGround() {
 //	driver->drawVertexPrimitiveList(matManager.vBackLine, 76, matManager.iBackLine, 58, irr::video::EVT_STANDARD, irr::scene::EPT_LINES);
 	//draw field
 	//draw field spell card
+	// Bot Theater: a Field Spell with a backdrop picture (textures/fbg) fills its half of the
+	// screen instead of the usual art on the field, over the background and under everything else.
+	bool nearBackdrop = false, farBackdrop = false;
+	{
+		ClientCard* nearField = nullptr;
+		ClientCard* farField = nullptr;
+		if(gameConf.draw_field_spell) {
+			if(dField.szone[0][5] && dField.szone[0][5]->position & POS_FACEUP)
+				nearField = dField.szone[0][5];
+			if(dField.szone[1][5] && dField.szone[1][5]->position & POS_FACEUP)
+				farField = dField.szone[1][5];
+		}
+		botTheater.DrawFieldBackdrops(nearField, farField, nearBackdrop, farBackdrop);
+	}
 	driver->setTransform(irr::video::ETS_WORLD, irr::core::IdentityMatrix);
-	bool drawField = false;
+	bool drawField = nearBackdrop || farBackdrop;	// see-through board, so the backdrops show
 	int rule = (dInfo.duel_rule >= 4) ? 1 : 0;
 	if(gameConf.draw_field_spell) {
 		int fieldcode1 = -1;
 		int fieldcode2 = -1;
-		if(dField.szone[0][5] && dField.szone[0][5]->position & POS_FACEUP)
+		if(dField.szone[0][5] && dField.szone[0][5]->position & POS_FACEUP && !nearBackdrop)
 			fieldcode1 = dField.szone[0][5]->code;
-		if(dField.szone[1][5] && dField.szone[1][5]->position & POS_FACEUP)
+		if(dField.szone[1][5] && dField.szone[1][5]->position & POS_FACEUP && !farBackdrop)
 			fieldcode2 = dField.szone[1][5]->code;
 		int fieldcode = (fieldcode1 > 0) ? fieldcode1 : fieldcode2;
 		// Bot Theater: the near side's Field Spell art is always turned round (180 degrees) and the
@@ -132,8 +146,10 @@ void Game::DrawBackGround() {
 				drawField = true;
 				matManager.mTexture.setTexture(0, texture);
 				driver->setMaterial(matManager.mTexture);
-				if(fieldcode1 > 0)
-					drawTurned(matManager.vFieldSpell);	// only the near side has one
+				if(fieldcode1 > 0)	// only the near side has one (or the far side has a backdrop: near half only)
+					drawTurned(farBackdrop ? matManager.vFieldSpell1 : matManager.vFieldSpell);
+				else if(nearBackdrop)
+					drawTurned(matManager.vFieldSpell2);	// far half only: the near side has a backdrop
 				else
 					driver->drawVertexPrimitiveList(matManager.vFieldSpell, 4, matManager.iRectangle, 2);
 			}
