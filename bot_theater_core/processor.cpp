@@ -1458,6 +1458,8 @@ int32_t field::process_point_event(int16_t step, int32_t skip_trigger, int32_t s
 				++eit;
 				card* phandler = peffect->get_handler();
 				e.event_code = peffect->code;
+				if(!is_in_own_split_section(phandler))
+					continue;	// split-zone tag rule: the other teammate's card
 				if(phandler->current.location == LOCATION_MZONE && peffect->is_chainable(infos.turn_player)
 				        && peffect->is_activateable(infos.turn_player, e)) {
 					newchain.flag = 0;
@@ -2132,6 +2134,8 @@ int32_t field::process_idle_command(uint16_t step) {
 		for(auto eit = effects.ignition_effect.begin(); eit != effects.ignition_effect.end();) {
 			effect* peffect = eit->second;
 			++eit;
+			if(!is_in_own_split_section(peffect->get_handler()))
+				continue;	// split-zone tag rule: the other teammate's card
 			peffect->set_activate_location();
 			newchain.triggering_effect = peffect;
 			if(peffect->is_activateable(infos.turn_player, free_event))
@@ -2450,6 +2454,8 @@ int32_t field::process_battle_command(uint16_t step) {
 			for(auto& pcard : player[infos.turn_player].list_mzone) {
 				if(!pcard)
 					continue;
+				if(!is_in_own_split_section(pcard))
+					continue;	// split-zone tag rule: the other teammate's monster
 				if(!pcard->is_capable_attack_announce(infos.turn_player))
 					continue;
 				uint8_t chain_attack = FALSE;

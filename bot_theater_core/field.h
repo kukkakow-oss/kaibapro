@@ -392,6 +392,7 @@ public:
 	int32_t is_location_useable(uint8_t playerid, uint32_t general_location, uint8_t sequence) const;
 	uint32_t get_split_zone_mask(uint8_t playerid, uint32_t uplayer) const;
 	int32_t is_location_useable_split(uint8_t playerid, uint32_t general_location, uint8_t sequence, uint32_t uplayer) const;
+	int32_t is_in_own_split_section(card* pcard) const;
 	int32_t get_useable_count(card* pcard, uint8_t playerid, uint8_t location, uint8_t uplayer, uint32_t reason, uint32_t zone = 0xff, uint32_t* list = nullptr);
 	int32_t get_useable_count_fromex(card* pcard, uint8_t playerid, uint8_t uplayer, uint32_t zone = 0xff, uint32_t* list = nullptr);
 	int32_t get_spsummonable_count(card* pcard, uint8_t playerid, uint32_t zone = 0xff, uint32_t* list = nullptr);

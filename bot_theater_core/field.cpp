@@ -662,6 +662,25 @@ int32_t field::is_location_useable_split(uint8_t playerid, uint32_t general_loca
 	return (mask & bit) ? TRUE : FALSE;
 }
 /**
+* Split-zone tag rule (DUEL_SPLIT_ZONES): whether `pcard` sits in a zone that belongs to the
+* teammate now playing for its controller (their own section, or a shared zone). Only that
+* teammate may declare attacks with the monsters there or use those cards' Ignition Effects.
+* Cards that aren't in a Monster or Spell/Trap Zone, and every card when the rule is off, count.
+*/
+int32_t field::is_in_own_split_section(card* pcard) const {
+	if(!(core.duel_options & DUEL_SPLIT_ZONES) || !(core.duel_options & DUEL_TAG_MODE))
+		return TRUE;
+	uint8_t con = pcard->current.controler;
+	if(con > 1)
+		return TRUE;
+	uint32_t mask = get_split_zone_mask(con, PLAYER_NONE);
+	if(pcard->current.location == LOCATION_MZONE)
+		return (mask & (0x1U << pcard->current.sequence)) ? TRUE : FALSE;
+	if(pcard->current.location == LOCATION_SZONE)
+		return (mask & (0x100U << pcard->current.sequence)) ? TRUE : FALSE;
+	return TRUE;
+}
+/**
 * Return usable count in `zone` when `uplayer` moves `pcard` to the MZONE or SZONE(0~4) of `playerid` (can be negative).
 * For LOCATION_MZONE, "usable" means not used, not disabled, satisfying EFFECT_MUST_USE_MZONE, satisfying EFFECT_MAX_MZONE.
 * For LOCATION_SZONE, "usable" means not used, not disabled, satisfying EFFECT_MAX_SZONE.
