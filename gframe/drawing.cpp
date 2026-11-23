@@ -1476,9 +1476,9 @@ static irr::core::vector2di FiveScreen(float x, float y, float z = 0)
 	return irr::core::vector2di((int)std::lround(mainGame->FieldX(sx) * mainGame->xScale),
 		(int)std::lround(mainGame->FieldY(sy) * mainGame->yScale));
 }
-// Bot Theater, five-a-side: each player's picture in line with their column of the field: the
-// far team's in a row along the top of the window, just above their hand, and the near team's
-// along the bottom, just below theirs. Drawn before the cards, so a hand that reaches them
+// Bot Theater, five-a-side: each player's picture in line with their column of the field (the
+// column carried on past the field's edge): the far team's in a row along the top of the window,
+// just above their hand, and the near team's along the bottom, just below theirs. Drawn before the cards, so a hand that reaches them
 // covers them. The gold frame marks whoever's turn it is; the member answering for the other
 // team (the last of them to play) has a thin white edge.
 void Game::DrawFivePortraits()
@@ -1493,10 +1493,20 @@ void Game::DrawFivePortraits()
 		for (int member = 0; member < 5; ++member)
 		{
 			int place = side * 5 + member;
-			int col = 4 - member;	// the member's own column: their Monster Zone in it
-			const irr::video::S3DVertex* zone = matManager.vFieldMzone[local][col];
-			auto centre = FiveScreen((zone[0].Pos.X + zone[1].Pos.X) / 2, (zone[0].Pos.Y + zone[2].Pos.Y) / 2);
-			int ax = centre.X - a / 2;
+			// The member's own column, carried on to the portrait's row: the line through the
+			// middle of their Monster Zone and of their Spell & Trap Zone, as the field shows it
+			// (the columns draw together towards the top of the window, so the far team's
+			// portraits are closer together than the near team's).
+			int col = 4 - member;
+			const irr::video::S3DVertex* mz = matManager.vFieldMzone[local][col];
+			const irr::video::S3DVertex* sz = matManager.vFieldSzone[local][col][dInfo.duel_rule >= 4 ? 1 : 0];
+			auto m = FiveScreen((mz[0].Pos.X + mz[1].Pos.X) / 2, (mz[0].Pos.Y + mz[2].Pos.Y) / 2);
+			auto z = FiveScreen((sz[0].Pos.X + sz[1].Pos.X) / 2, (sz[0].Pos.Y + sz[2].Pos.Y) / 2);
+			int row_y = ay + a / 2;
+			int centre_x = m.X;
+			if (z.Y != m.Y)
+				centre_x = (int)std::lround(m.X + (double)(row_y - m.Y) * (z.X - m.X) / (z.Y - m.Y));
+			int ax = centre_x - a / 2;
 			irr::core::recti box(ax, ay, ax + a, ay + a);
 			irr::video::ITexture* avatar = imageManager.tAvatar[place];
 			if (avatar)

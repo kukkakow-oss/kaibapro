@@ -46,9 +46,10 @@ four-player WindBot.
 
 - The field sits against the right-hand edge of the window, at almost its usual size, with the
   card text panel (narrower than usual, its buttons in a row under the card picture) on the left.
-- **Portraits.** Each player's picture is in line with their own column: the far team's in a row
-  along the top of the window, just above their hand, and the near team's along the bottom, just
-  below theirs (a hand that reaches them is drawn over them). The player taking the turn has the
+- **Portraits.** Each player's picture is in line with their own column (the column's line
+  carried on past the edge of the field, so the far team's pictures sit closer together than the
+  near team's): the far team's in a row along the top of the window, just above their hand, and
+  the near team's along the bottom, just below theirs (a hand that reaches them is drawn over them). The player taking the turn has the
   gold frame, and their column of the field a faint gold wash; the member answering for the other
   team (the last of them to have played) has a thin white edge.
 - **Life Points.** Each team's LP is an upright bar beside the far half of the field (the near
