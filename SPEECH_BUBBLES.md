@@ -13,7 +13,8 @@ said while another is showing in the same place waits a moment for it.
   side. At the end of a tag duel only two players speak, one each side: the player whose turn
   it is (for their team) and, from the other team, the player on the other side of the screen
   (WindBot's `TagEndSpeaker`). The partners also hand over to each other: when a team's first
-  player ends their turn they say an "endturn" line, and when its second player starts theirs
+  player ends their turn they say an "endturn" line (as they go to the End Phase, so it shows
+  before the hands switch), and when its second player starts theirs
   they say a "newturn" line. With clockwise turns each team plays twice in a row after the first
   turn, so the first player is whoever plays the first of the two (the duel's opening turn is
   played alone and gets neither line); in the usual order it's whoever played the team's first
